@@ -11,7 +11,6 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(app);
 
-#include "main.h"
 #include "led.h"
 
 #if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
@@ -463,11 +462,11 @@ void app_led_last_mode(app_led_data_t *leds, k_timeout_t block) {
   switch (leds->last_mode) {
     case Blink:
       // if all not blinking, return to manual/rainbow - below will override if any blinking
-      if (atomic_test_bit(&system_settings.flags, FSYS_SETTINGS_LED_RAINBOW)) {
-        last = Rainbow;
-      } else {
+      /*if (atomic_test_bit(&system_settings.flags, FSYS_SETTINGS_LED_RAINBOW)) {*/
+      /*  last = Rainbow;*/
+      /*} else {*/
         last = Manual;
-      }
+      /*}*/
 
       // loop through, any blinking will set to return to blink
       for (int i = 0; i < leds->num_leds; i++) {
@@ -480,11 +479,11 @@ void app_led_last_mode(app_led_data_t *leds, k_timeout_t block) {
     case Sequence:
       // if sequence finished, return to manual/rainbow
       if (leds->sequence == NULL) {
-        if (atomic_test_bit(&system_settings.flags, FSYS_SETTINGS_LED_RAINBOW)) {
-          last = Rainbow;
-        } else {
+        /*if (atomic_test_bit(&system_settings.flags, FSYS_SETTINGS_LED_RAINBOW)) {*/
+        /*  last = Rainbow;*/
+        /*} else {*/
           last = Manual;
-        }
+        /*}*/
       }
       break;
     default:
@@ -697,7 +696,7 @@ void app_led_seq_fnc(void *const pleds, const void *const pstep, k_timeout_t blo
 
 /* Fade in and out to global color with hold at top/bottom like breating */
 void app_led_breathe(void *const pleds, const void *const pstep, k_timeout_t block) {
-  static bool_t toggle = false;
+  static bool toggle = false;
   app_led_data_t *leds = (app_led_data_t *) pleds;
   app_led_sequence_data_t *data = &leds->sequence_data;
   data->color = leds->global_color;
@@ -766,7 +765,7 @@ void app_led_half_blink(void *const pleds, const void *const pstep, k_timeout_t 
 }
 
 void app_led_sine(void *const pleds, const void *const pstep, k_timeout_t block) {
-  static bool_t toggle = false;
+  static bool toggle = false;
   app_led_data_t *leds = (app_led_data_t *) pleds;
   app_led_sequence_data_t *data = &leds->sequence_data;
   data->color = leds->global_color;
