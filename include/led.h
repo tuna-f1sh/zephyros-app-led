@@ -218,6 +218,7 @@ typedef struct {
   const struct device *const app_led; // pointer to device tree node
   uint8_t global_brightness; // current brightness
   uint8_t hue; // global hue for rainbow
+  bool rainbow; // rainbow mode
   const uint8_t num_leds; // number of leds
   rgb_color_t global_color; // user colour for manual mode, will revert to this
   rgb_color_t _color; // current global color

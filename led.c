@@ -70,6 +70,7 @@ app_led_data_t rgbled = {
   .global_color = {.r = 0, .g = 0, .b = 0 },
   ._color = {.r = 0, .g = 0, .b = 0 },
   .hue = 0,
+  .rainbow = false,
   .state = rgb_state,
   .sequence_step = 0,
   .sequence = NULL,
@@ -447,6 +448,8 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block) {
       if (IS_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL))
         k_thread_suspend(app_led_task_tid);
       break;
+    case Rainbow:
+      leds->rainbow = true;
     default:
       k_thread_resume(app_led_task_tid);
       break;
@@ -462,11 +465,11 @@ void app_led_last_mode(app_led_data_t *leds, k_timeout_t block) {
   switch (leds->last_mode) {
     case Blink:
       // if all not blinking, return to manual/rainbow - below will override if any blinking
-      /*if (atomic_test_bit(&system_settings.flags, FSYS_SETTINGS_LED_RAINBOW)) {*/
-      /*  last = Rainbow;*/
-      /*} else {*/
+      if (leds->rainbow) {
+        last = Rainbow;
+      } else {
         last = Manual;
-      /*}*/
+      }
 
       // loop through, any blinking will set to return to blink
       for (int i = 0; i < leds->num_leds; i++) {
@@ -479,11 +482,11 @@ void app_led_last_mode(app_led_data_t *leds, k_timeout_t block) {
     case Sequence:
       // if sequence finished, return to manual/rainbow
       if (leds->sequence == NULL) {
-        /*if (atomic_test_bit(&system_settings.flags, FSYS_SETTINGS_LED_RAINBOW)) {*/
-        /*  last = Rainbow;*/
-        /*} else {*/
+        if (leds->rainbow) {
+          last = Rainbow;
+        } else {
           last = Manual;
-        /*}*/
+        }
       }
       break;
     default:
