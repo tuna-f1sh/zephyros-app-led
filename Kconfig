@@ -1,6 +1,6 @@
 config APP_LED
 	bool "Enable LED application"
-	default y
+	default n
 	help
 	  Enable LED application.
 

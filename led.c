@@ -437,6 +437,9 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block) {
     if (k_mutex_lock(&leds->mutex, block) == 0) {
       leds->last_mode = leds->mode;
       leds->mode = mode;
+      if (leds->mode == Rainbow) {
+        leds->rainbow = true;
+      }
       k_mutex_unlock(&leds->mutex);
     }
   }
@@ -448,8 +451,6 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block) {
       if (IS_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL))
         k_thread_suspend(app_led_task_tid);
       break;
-    case Rainbow:
-      leds->rainbow = true;
     default:
       k_thread_resume(app_led_task_tid);
       break;
