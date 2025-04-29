@@ -1,3 +1,4 @@
+*twister-out*
 compile_commands.json
 *.pdf
 mainline.persist
@@ -68,20 +69,3 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
-
-# End of https://www.toptal.com/developers/gitignore/api/c
-
-.ninja_log
-*.emSession
-*.log
-build_nrf5340dk_nrf5340_cpuapp/app/
-build_nrf5340dk_nrf5340_cpuapp/CMakeFiles
-build_nrf5340dk_nrf5340_cpuapp/hci_rpmsg/
-build_nrf5340dk_nrf5340_cpuapp/Kconfig/
-build_nrf5340dk_nrf5340_cpuapp/mcuboot/
-build_nrf5340dk_nrf5340_cpuapp/modules/
-build_nrf5340dk_nrf5340_cpuapp/Output/
-build_nrf5340dk_nrf5340_cpuapp/zephyr/
-build_nrf5340dk_nrf5340_cpuapp/build.emProject
-build_nrf5340dk_nrf5340_cpuapp/build.ninja
-.aider*

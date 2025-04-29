@@ -1,0 +1,39 @@
+sample:
+  name: demo_led
+common:
+  build_only: true
+tests:
+  demo_led.gpio.nucleo_l432kc:
+    platform_allow:
+      - nucleo_l432kc
+    extra_args: CONFIG_GPIO=y CONFIG_LED=y
+
+  # demo_led.gpio.generic:
+  #   filter: dt_compat_enabled("gpio-leds")
+  #   extra_args: CONFIG_GPIO=y CONFIG_LED=y
+
+  demo_led.pwm.nucleo_l432kc:
+    platform_allow:
+      - nucleo_l432kc
+    extra_args: CONFIG_PWM=y CONFIG_LED=y CONFIG_LED_PWM=y
+    extra_dtc_overlay_files:
+      - boards/nucleo_l432kc_pwm.overlay
+
+  # demo_led.pwm.generic:
+  #   depends_on:
+  #     - pwm
+  #   filter: dt_compat_enabled("pwm-leds")
+  #   extra_args: CONFIG_PWM=y CONFIG_LED=y CONFIG_LED_PWM=y
+
+  demo_led.ws2812b.nucleo_l432kc:
+    platform_allow:
+      - nucleo_l432kc
+    extra_args: CONFIG_SPI=y CONFIG_LED_STRIP=y CONFIG_WS2812_STRIP_SPI=y
+    extra_dtc_overlay_files:
+      - boards/nucleo_l432kc_ws2812b.overlay
+
+  # demo_led.ws2812b.generic:
+  #   depends_on:
+  #     - spi
+  #   filter: dt_compat_enabled("worldsemi,ws2812-spi")
+  #   extra_args: CONFIG_SPI=y CONFIG_LED_STRIP=y CONFIG_WS2812_STRIP_SPI=y

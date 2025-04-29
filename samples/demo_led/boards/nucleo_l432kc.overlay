@@ -1,0 +1,17 @@
+/ {
+	leds {
+		compatible = "gpio-leds";
+		led0: rled {
+			gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;
+			label = "Red LED";
+		};
+		led1: gled {
+			gpios = <&gpioa 3 GPIO_ACTIVE_LOW>;
+			label = "Green LED";
+		};
+		led2: bled {
+			gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
+			label = "Blue LED";
+		};
+	};
+};
