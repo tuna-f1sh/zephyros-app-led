@@ -2,6 +2,8 @@ sample:
   name: demo_led
 common:
   build_only: true
+  integration_platforms:
+    - nucleo_l432kc
 tests:
   demo_led.gpio.nucleo_l432kc:
     platform_allow:
@@ -15,7 +17,8 @@ tests:
   demo_led.pwm.nucleo_l432kc:
     platform_allow:
       - nucleo_l432kc
-    extra_args: CONFIG_PWM=y CONFIG_LED=y CONFIG_LED_PWM=y
+    extra_overlay_confs:
+      - prj_pwm.conf
     extra_dtc_overlay_files:
       - boards/nucleo_l432kc_pwm.overlay
 
@@ -28,9 +31,10 @@ tests:
   demo_led.ws2812b.nucleo_l432kc:
     platform_allow:
       - nucleo_l432kc
-    extra_args: CONFIG_SPI=y CONFIG_LED_STRIP=y CONFIG_WS2812_STRIP_SPI=y
+    extra_overlay_confs:
+      - prj_ws2812.conf
     extra_dtc_overlay_files:
-      - boards/nucleo_l432kc_ws2812b.overlay
+      - boards/nucleo_l432kc_ws2812.overlay
 
   # demo_led.ws2812b.generic:
   #   depends_on:
