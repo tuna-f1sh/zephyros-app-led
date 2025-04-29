@@ -84,3 +84,4 @@ build_nrf5340dk_nrf5340_cpuapp/Output/
 build_nrf5340dk_nrf5340_cpuapp/zephyr/
 build_nrf5340dk_nrf5340_cpuapp/build.emProject
 build_nrf5340dk_nrf5340_cpuapp/build.ninja
+.aider*

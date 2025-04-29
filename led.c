@@ -1,14 +1,14 @@
 // Some of this code is based on the led_pwm driver in Zephyr but modified to
 // allow multi-threaded access and to allow for a sequence of colours to be
 // displayed, RGB brightness etc.
-#include <errno.h>
-#include <math.h>
-#include <stdlib.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
+#include <errno.h>
+#include <math.h>
+#include <stdlib.h>
 
 #include "led.h"
 
@@ -60,7 +60,12 @@ app_led_data_t rgbled = {
 	.last_mode = Manual,
 	.mutex = Z_MUTEX_INITIALIZER(rgbled.mutex),
 	.app_led = DEVICE_DT_GET(LED_NODE_ID),
+	.hw_num_leds = NUM_LEDS,
+#if IS_ENABLED(CONFIG_APP_LED_PIN_RGB)
+	.num_leds = NUM_LEDS / 3,
+#else
 	.num_leds = NUM_LEDS,
+#endif
 	.global_brightness = 0xFF,
 	.global_color = {.r = 0, .g = 0, .b = 0},
 	._color = {.r = 0, .g = 0, .b = 0},
@@ -104,7 +109,7 @@ static int _app_led_set_pixels(app_led_data_t *leds, uint16_t start, uint16_t en
 {
 	struct led_rgb c_rgb;
 
-	if (start < leds->num_leds && end <= leds->num_leds) {
+	if (start < leds->hw_num_leds && end <= leds->hw_num_leds) {
 		c_rgb = (struct led_rgb){
 			.r = (uint16_t)c.r * brightness / 255,
 			.g = (uint16_t)c.g * brightness / 255,
@@ -188,12 +193,8 @@ static int _app_led_set_pixels(app_led_data_t *leds, uint16_t start, uint16_t en
 {
 	int err;
 
-	// TODO CONFIG for using passed color as single LED value for chains of GPIO
-	// LEDs, eg r + g + b > 127 == on, else off would not multiply by 3 this in
-	// this case
-	// * 3 for RGB LED
-	end *= 3;
-	if (start < leds->num_leds && end <= leds->num_leds) {
+#if IS_ENABLED(CONFIG_APP_LED_PIN_RGB)
+	if (start * 3 < leds->hw_num_leds && end * 3 <= leds->hw_num_leds) {
 		// scale
 		c.r = (uint16_t)c.r * brightness / 255;
 		c.g = (uint16_t)c.g * brightness / 255;
@@ -212,6 +213,25 @@ static int _app_led_set_pixels(app_led_data_t *leds, uint16_t start, uint16_t en
 			}
 		}
 	}
+#else
+	if (start < leds->hw_num_leds && end <= leds->hw_num_leds) {
+		// scale
+		c.r = (uint16_t)c.r * brightness / 255;
+		c.g = (uint16_t)c.g * brightness / 255;
+		c.b = (uint16_t)c.b * brightness / 255;
+
+		leds->_color = c;
+
+		for (int i = start; i < end; i++) {
+			leds->state[i]._color = c;
+			err = _app_led_set_brightness(leds, i, c.r + c.g + c.b, block);
+
+			if (err != 0) {
+				return err;
+			}
+		}
+	}
+#endif
 
 	return 0;
 }
@@ -397,8 +417,7 @@ int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t bl
 	}
 
 	if (leds->mode == Manual) {
-		return _app_led_set_pixels(leds, 0, leds->num_leds, c, leds->global_brightness,
-					   block);
+		return _app_led_set_pixels(leds, 0, leds->num_leds, c, leds->global_brightness, block);
 	} else {
 		return 0;
 	}
@@ -467,7 +486,7 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block)
 	// act on change
 	switch (mode) {
 	case Manual:
-		_app_led_set_pixels(leds, 0, leds->num_leds / 3, leds->global_color,
+		_app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color,
 				    leds->global_brightness, block);
 		if (IS_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL))
 			k_thread_suspend(app_led_task_tid);
@@ -807,8 +826,8 @@ void app_led_half_blink(void *const pleds, const void *const pstep, k_timeout_t 
 
 	if (data->count) {
 		app_led_fade_color(leds, 16, RGBHEX(Black), block);
-		_app_led_set_pixels(leds, 0, leds->num_leds / 2, data->color,
-				    leds->global_brightness, block);
+		_app_led_set_pixels(leds, 0, leds->num_leds / 2, data->color, leds->global_brightness,
+				    block);
 	}
 
 	if (k_uptime_get() - data->last_tick >= (step->time_in_10ms * 10) / 2) {
@@ -884,8 +903,7 @@ static uint32_t app_led_show_sequence_step(app_led_data_t *leds, uint8_t step_nu
 			if (step->fnc != NULL) {
 				step->fnc(leds, step, block);
 			} else {
-				_app_led_set_pixels(leds, 0, leds->num_leds / 3,
-						    leds->sequence_data.color,
+				_app_led_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color,
 						    leds->sequence_data.brightness, block);
 			}
 			ret = 10 * step->time_in_10ms;
@@ -959,8 +977,7 @@ static void app_led_update_sequence(app_led_data_t *leds, k_timeout_t block)
 				} else {
 					leds->sequence_data.brightness = step->end_brightness;
 				}
-				_app_led_set_pixels(leds, 0, leds->num_leds / 3,
-						    leds->sequence_data.color,
+				_app_led_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color,
 						    leds->sequence_data.brightness, block);
 			}
 
@@ -1000,13 +1017,12 @@ void app_led_update(app_led_data_t *leds)
 		// if manual mode, just set the colour - will be suspended if
 		// CONFIG_LED_SUSPEND_TASK_MANUAL is set otherwise update ensures LED strip
 		// is updated even if disconnected
-		_app_led_set_pixels(leds, 0, leds->num_leds / 3, leds->global_color,
+		_app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color,
 				    leds->global_brightness, K_FOREVER);
 		break;
 	case Rainbow:
 		leds->hue++;
-		_app_led_set_pixels(leds, 0, leds->num_leds / 3,
-				    app_led_hsv_to_rgb(leds->hue, 255, 255),
+		_app_led_set_pixels(leds, 0, leds->num_leds, app_led_hsv_to_rgb(leds->hue, 255, 255),
 				    leds->global_brightness, K_FOREVER);
 		break;
 	case Blink:

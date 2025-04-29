@@ -225,7 +225,8 @@ typedef struct {
 	uint8_t global_brightness;		 // current brightness
 	uint8_t hue;				 // global hue for rainbow
 	bool rainbow;				 // rainbow mode
-	const uint8_t num_leds;			 // number of leds
+	const uint8_t hw_num_leds;	         // number of LEDs in DT prop
+	const uint8_t num_leds;			 // number of LEDs in sequence
 	rgb_color_t global_color;		 // user colour for manual mode, will revert to this
 	rgb_color_t _color;			 // current global color
 	struct app_led_state *state;		 // state of each led

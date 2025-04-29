@@ -1,19 +1,36 @@
-config APP_LED
-	bool "Enable LED application"
+menuconfig APP_LED
+	bool "Enable App LED module"
 	default n
-	help
-	  Enable LED application.
+
+if APP_LED
 
 config APP_LED_LOG_LEVEL
-	int "Log level for app_led module"
+	int "Log level for App LED module"
 	default 3
 	help
-	  Set the log level for the LED application. The higher the number, the more verbose the logging.
 	  0: No logs
 	  1: Error logs only
 	  2: Warning logs
 	  3: Info logs
 	  4: Debug logs
+
+choice
+	prompt "LED mode"
+	default APP_LED_PIN_RGB
+	help
+	  Set GPIO/PWM LED pin configuration
+
+config APP_LED_PIN_INDIVIDUAL
+	bool "Individual pin mode"
+	help
+	  Discrete LEDs on each GPIO.
+
+config APP_LED_PIN_RGB
+	bool "RGB pin mode"
+	help
+	  RGB LED connected to 3 GPIO pins.
+
+endchoice
 
 config APP_LED_SUSPEND_TASK_MANUAL
 	bool "Suspend LED task on manual mode"
@@ -32,3 +49,5 @@ config APP_LED_THREAD_STACK_SIZE
 	help
 	  Set the stack size for the LED thread. The default is 1024 bytes.
 	  This may need to be increased if the LED application is using a lot of memory.
+
+endif
