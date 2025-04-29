@@ -4,9 +4,31 @@ config APP_LED
 	help
 	  Enable LED application.
 
+config APP_LED_LOG_LEVEL
+	int "Log level for app_led module"
+	default 3
+	help
+	  Set the log level for the LED application. The higher the number, the more verbose the logging.
+	  0: No logs
+	  1: Error logs only
+	  2: Warning logs
+	  3: Info logs
+	  4: Debug logs
+
 config APP_LED_SUSPEND_TASK_MANUAL
 	bool "Suspend LED task on manual mode"
 	default y
 	help
 	  If enabled, the LED task is suspended when the node is in manual mode.
 	  If disabled, the LED task is running in manual mode. If strip is unreliable, may help as will be updated at 100 Hz even if no change in state.
+
+config APP_LED_THREAD_PRIO
+	int "LED thread priority"
+	default 1
+
+config APP_LED_THREAD_STACK_SIZE
+	int "LED thread stack size"
+	default 512
+	help
+	  Set the stack size for the LED thread. The default is 1024 bytes.
+	  This may need to be increased if the LED application is using a lot of memory.

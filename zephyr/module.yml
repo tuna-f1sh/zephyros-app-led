@@ -1,3 +1,4 @@
+name: app_led
 build:
   cmake: .
   kconfig: Kconfig

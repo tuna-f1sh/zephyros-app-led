@@ -7,11 +7,11 @@
 #include <zephyr/sys/util.h>
 #include <stdlib.h>
 #include <math.h>
-
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(app);
 
 #include "led.h"
+
+LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
 #include <zephyr/drivers/led_strip.h>
@@ -79,11 +79,8 @@ app_led_data_t rgbled = {
   .sequence_data = { .count = 0, .last_tick = 0 },
 };
 
-#define PRIORITY  k_thread_priority_get(k_current_get()) + 3
-#define STACKSIZE 1024
-
 static k_tid_t app_led_task_tid;
-static K_THREAD_STACK_DEFINE(app_led_task_stack, STACKSIZE);
+static K_THREAD_STACK_DEFINE(app_led_task_stack, CONFIG_APP_LED_THREAD_STACK_SIZE);
 static struct k_thread app_led_task_thread;
 
 #if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
@@ -447,7 +444,7 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block) {
   // act on change
   switch (mode) {
     case Manual:
-      _app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color, leds->global_brightness, block);
+      _app_led_set_pixels(leds, 0, leds->num_leds/3, leds->global_color, leds->global_brightness, block);
       if (IS_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL))
         k_thread_suspend(app_led_task_tid);
       break;
@@ -660,33 +657,36 @@ void app_led_sequence_clear(app_led_data_t *leds, k_timeout_t block) {
 }
 
 /* Wait for sequence/blink to finish */
-void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t wait_ms) {
-  int64_t entry = k_uptime_get();
+void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t timeout) {
+  k_timepoint_t end = sys_timepoint_calc(timeout);
 
-  // block for wait_ms or forever if 0 for sequence mode to exit (sequence finished)
-  while((k_uptime_get() - entry < wait_ms.ticks || wait_ms.ticks == 0)
-      && (leds->mode == Sequence || leds->mode == Blink))
-    ;;
+  do {
+    timeout = sys_timepoint_timeout(end);
+    k_sleep(K_MSEC(10));
+  } while (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) &&
+           (leds->mode == Sequence || leds->mode == Blink));
 }
 
 /* Wait for sequence to finish */
-void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t wait_ms) {
-  int64_t entry = k_uptime_get();
+void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t timeout) {
+  k_timepoint_t end = sys_timepoint_calc(timeout);
 
-  // block for wait_ms or forever if 0 for sequence mode to exit (sequence finished)
-  while((k_uptime_get() - entry < wait_ms.ticks || wait_ms.ticks == 0)
-      && leds->mode == Sequence)
-    ;;
+  do {
+    timeout = sys_timepoint_timeout(end);
+    k_sleep(K_MSEC(10));
+  } while (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) &&
+           leds->mode == Sequence);
 }
 
 /* Wait for blink to finish */
-void app_led_wait_blink(app_led_data_t *leds, k_timeout_t wait_ms) {
-  int64_t entry = k_uptime_get();
+void app_led_wait_blink(app_led_data_t *leds, k_timeout_t timeout) {
+  k_timepoint_t end = sys_timepoint_calc(timeout);
 
-  // block for wait_ms or forever if 0 for sequence mode to exit (sequence finished)
-  while((k_uptime_get() - entry < wait_ms.ticks || wait_ms.ticks == 0)
-      && leds->mode == Blink)
-    ;;
+  do {
+    timeout = sys_timepoint_timeout(end);
+    k_sleep(K_MSEC(10));
+  } while (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) &&
+           leds->mode == Blink);
 }
 
 /* Sequence function callbacks */
@@ -816,7 +816,7 @@ static uint32_t app_led_show_sequence_step(app_led_data_t *leds, uint8_t step_nu
       if (step->fnc != NULL) {
         step->fnc(leds, step, block);
       } else {
-        _app_led_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color, leds->sequence_data.brightness, block);
+        _app_led_set_pixels(leds, 0, leds->num_leds/3, leds->sequence_data.color, leds->sequence_data.brightness, block);
       }
       ret = 10 * step->time_in_10ms;
     }
@@ -881,7 +881,7 @@ static void app_led_update_sequence(app_led_data_t *leds, k_timeout_t block) {
         } else {
           leds->sequence_data.brightness = step->end_brightness;
         }
-        _app_led_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color, leds->sequence_data.brightness, block);
+        _app_led_set_pixels(leds, 0, leds->num_leds/3, leds->sequence_data.color, leds->sequence_data.brightness, block);
       }
 
       k_mutex_unlock(&leds->mutex);
@@ -910,15 +910,15 @@ static void app_led_update_blink_mode(app_led_data_t *leds, k_timeout_t block) {
 }
 
 // should be called at least once per 1 ms (systick)
-void leds_update(app_led_data_t *leds) {
+void app_led_update(app_led_data_t *leds) {
   switch (leds->mode) {
     case Manual:
       // if manual mode, just set the colour - will be suspended if CONFIG_LED_SUSPEND_TASK_MANUAL is set otherwise update ensures LED strip is updated even if disconnected
-      _app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color, leds->global_brightness, K_FOREVER);
+      _app_led_set_pixels(leds, 0, leds->num_leds/3, leds->global_color, leds->global_brightness, K_FOREVER);
       break;
     case Rainbow:
       leds->hue++;
-      _app_led_set_pixels(leds, 0, leds->num_leds, app_led_hsv_to_rgb(leds->hue, 255, 255), leds->global_brightness, K_FOREVER);
+      _app_led_set_pixels(leds, 0, leds->num_leds/3, app_led_hsv_to_rgb(leds->hue, 255, 255), leds->global_brightness, K_FOREVER);
       break;
     case Blink:
       app_led_update_blink_mode(leds, K_FOREVER);
@@ -944,13 +944,15 @@ void app_led_task_worker(void *p1, void *p2, void *p3) {
   // works...
   while (1) {
     last = k_uptime_get();
-    leds_update(&rgbled);
+    app_led_update(&rgbled);
     k_sleep(K_MSEC(10 - (k_uptime_get() - last)));
   }
 }
 
-// The peripheral initialization is done by the LED/LED_PWM driver
-// with a post kernel init hook. We just need to start the task.
+/*
+ * The peripheral initialization is done by the LED/LED_PWM driver
+ * with a post kernel init hook. We just need to start the task.
+ */
 int app_led_init(void) {
   if (!device_is_ready(rgbled.app_led)) {
     LOG_ERR("Device %s is not ready", rgbled.app_led->name);
@@ -961,7 +963,7 @@ int app_led_init(void) {
       K_THREAD_STACK_SIZEOF(app_led_task_stack),
       app_led_task_worker,
       NULL, NULL, NULL,
-      PRIORITY, 0, K_NO_WAIT);
+      CONFIG_APP_LED_THREAD_PRIO, 0, K_NO_WAIT);
 
   LOG_INF("LED task started");
 
