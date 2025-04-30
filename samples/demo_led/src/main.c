@@ -6,12 +6,47 @@
 
 LOG_MODULE_REGISTER(demo_app_led, LOG_LEVEL_INF);
 
+#if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
+#include <zephyr/drivers/led_strip.h>
+#define LED_NODE_ID	 DT_ALIAS(led_strip)
+#define NUM_LEDS DT_PROP(DT_ALIAS(led_strip), chain_length)
+static struct led_rgb pixels[NUM_LEDS] = {0};
+
+#elif IS_ENABLED(CONFIG_LED_PWM)
+
+#include <zephyr/drivers/pwm.h>
+#define LED_NODE_ID	       DT_COMPAT_GET_ANY_STATUS_OKAY(pwm_leds)
+#define LED_LABEL(led_node_id) DT_PROP_OR(led_node_id, label, NULL),
+const char *app_led_label[] = {DT_FOREACH_CHILD(LED_NODE_ID, LED_LABEL)};
+#define NUM_LEDS	       ARRAY_SIZE(app_led_label)
+#if LED_NODE_ID > 0
+#error "No pwm_leds node found. Check your DTS."
+
+#endif
+
+#elif IS_ENABLED(CONFIG_LED)
+
+#include <zephyr/drivers/gpio.h>
+#define LED_NODE_ID	       DT_COMPAT_GET_ANY_STATUS_OKAY(gpio_leds)
+#define LED_LABEL(led_node_id) DT_PROP_OR(led_node_id, label, NULL),
+const char *app_led_label[] = {DT_FOREACH_CHILD(LED_NODE_ID, LED_LABEL)};
+#define NUM_LEDS	       ARRAY_SIZE(app_led_label)
+#if LED_NODE_ID > 0
+#error "No gpio_leds node found. Check your DTS."
+#endif
+
+#else
+#error "CONFIG_WS2812_STRIP_SPI, CONFIG_LED or CONFIG_LED_PWM must be set"
+#endif
+
+APP_LED_STATIC_DEFINE(rgbled, LED_NODE_ID, NUM_LEDS, CONFIG_APP_LED_PIN_RGB);
+
 int main(void)
 {
 	LOG_INF("Zephyros App_LED Demo Application Started");
 
 	/* Initialize the app_led module and internal update thread */
-	int ret = app_led_init();
+	int ret = app_led_init(&rgbled);
 	if (ret != 0) {
 		LOG_ERR("App LED module initialization failed: %d", ret);
 		return 1;

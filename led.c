@@ -9,74 +9,19 @@
 #include <errno.h>
 #include <math.h>
 #include <stdlib.h>
+#if IS_ENABLED(CONFIG_LED_STRIP)
+#include <zephyr/drivers/led_strip.h>
+#endif
+#if IS_ENABLED(CONFIG_LED_PWM)
+#include <zephyr/drivers/pwm.h>
+#endif
+#if IS_ENABLED(CONFIG_LED)
+#include <zephyr/drivers/gpio.h>
+#endif
 
 #include "led.h"
 
 LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
-
-#if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
-#include <zephyr/drivers/led_strip.h>
-#define LED_NODE_ID	 DT_ALIAS(led_strip)
-#define NUM_LEDS DT_PROP(DT_ALIAS(led_strip), chain_length)
-static struct led_rgb pixels[NUM_LEDS] = {0};
-
-#elif IS_ENABLED(CONFIG_LED_PWM)
-
-#include <zephyr/drivers/pwm.h>
-#define LED_NODE_ID	       DT_COMPAT_GET_ANY_STATUS_OKAY(pwm_leds)
-#define LED_LABEL(led_node_id) DT_PROP_OR(led_node_id, label, NULL),
-const char *app_led_label[] = {DT_FOREACH_CHILD(LED_NODE_ID, LED_LABEL)};
-#define NUM_LEDS	       ARRAY_SIZE(app_led_label)
-#if LED_NODE_ID > 0
-#error "No pwm_leds node found. Check your DTS."
-
-#endif
-
-#elif IS_ENABLED(CONFIG_LED)
-
-#include <zephyr/drivers/gpio.h>
-#define LED_NODE_ID	       DT_COMPAT_GET_ANY_STATUS_OKAY(gpio_leds)
-#define LED_LABEL(led_node_id) DT_PROP_OR(led_node_id, label, NULL),
-const char *app_led_label[] = {DT_FOREACH_CHILD(LED_NODE_ID, LED_LABEL)};
-#define NUM_LEDS	       ARRAY_SIZE(app_led_label)
-#if LED_NODE_ID > 0
-#error "No gpio_leds node found. Check your DTS."
-#endif
-
-#else
-#error "CONFIG_WS2812_STRIP_SPI, CONFIG_LED or CONFIG_LED_PWM must be set"
-#endif
-
-static struct app_led_state rgb_state[NUM_LEDS] = {[0 ... NUM_LEDS - 1] = {
-							   .color = {.hex = 0x000000},
-							   ._color = {.hex = 0x000000},
-							   .on_time_ms_left = 0,
-							   .off_time_ms_left = 0,
-						   }};
-
-app_led_data_t rgbled = {
-	.mode = Manual,
-	.last_mode = Manual,
-	.mutex = Z_MUTEX_INITIALIZER(rgbled.mutex),
-	.app_led = DEVICE_DT_GET(LED_NODE_ID),
-	.hw_num_leds = NUM_LEDS,
-#if IS_ENABLED(CONFIG_APP_LED_PIN_RGB)
-	.num_leds = NUM_LEDS / 3,
-#else
-	.num_leds = NUM_LEDS,
-#endif
-	.global_brightness = 0xFF,
-	.global_color = {.r = 0, .g = 0, .b = 0},
-	._color = {.r = 0, .g = 0, .b = 0},
-	.hue = 0,
-	.rainbow = false,
-	.state = rgb_state,
-	.sequence_step = 0,
-	.sequence = NULL,
-	.time_sequence_next = 0,
-	.sequence_repeat_count = 0,
-	.sequence_data = {.count = 0, .last_tick = 0},
-};
 
 static k_tid_t app_led_task_tid;
 static K_THREAD_STACK_DEFINE(app_led_task_stack, CONFIG_APP_LED_THREAD_STACK_SIZE);
@@ -694,10 +639,10 @@ int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness,
 	app_led_fade_sequence[1].color = c;
 	app_led_fade_sequence[1].start_brightness = end_brightness;
 	app_led_fade_sequence[1].end_brightness = end_brightness;
-	app_led_run_sequence(&rgbled, app_led_fade_sequence, 0, block);
+	app_led_run_sequence(leds, app_led_fade_sequence, 0, block);
 	// do this after starting sequence so gets set in background
-	app_led_set_global_color(&rgbled, c, block);
-	app_led_set_global_brightness(&rgbled, end_brightness, block);
+	app_led_set_global_color(leds, c, block);
+	app_led_set_global_brightness(leds, end_brightness, block);
 
 	return 0;
 }
@@ -752,7 +697,7 @@ void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t timeout)
 
 	do {
 		timeout = sys_timepoint_timeout(end);
-		k_sleep(K_MSEC(10));
+		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD));
 	} while (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) &&
 		 (leds->mode == Sequence || leds->mode == Blink));
 }
@@ -764,7 +709,7 @@ void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t timeout)
 
 	do {
 		timeout = sys_timepoint_timeout(end);
-		k_sleep(K_MSEC(10));
+		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD));
 	} while (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) && leds->mode == Sequence);
 }
 
@@ -775,7 +720,7 @@ void app_led_wait_blink(app_led_data_t *leds, k_timeout_t timeout)
 
 	do {
 		timeout = sys_timepoint_timeout(end);
-		k_sleep(K_MSEC(10));
+		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD));
 	} while (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) && leds->mode == Blink);
 }
 
@@ -1070,15 +1015,17 @@ void app_led_update(app_led_data_t *leds)
 
 void app_led_task_worker(void *p1, void *p2, void *p3)
 {
-	int last = k_uptime_get();
+	int64_t last = k_uptime_get();
+	__ASSERT(p1 != NULL, "LED data pointer is NULL");
+	app_led_data_t *leds = (app_led_data_t *)p1;
 
 	// this whole led system would probably be better as a worker with queue of
 	// LED commands to process, app_led_sequence_step_t for example but it sort of
 	// works...
 	while (1) {
 		last = k_uptime_get();
-		app_led_update(&rgbled);
-		k_sleep(K_MSEC(10 - (k_uptime_get() - last)));
+		app_led_update(leds);
+		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD - (k_uptime_delta(&last) % 10)));
 	}
 }
 
@@ -1086,16 +1033,16 @@ void app_led_task_worker(void *p1, void *p2, void *p3)
  * The peripheral initialization is done by the LED/LED_PWM driver
  * with a post kernel init hook. We just need to start the task.
  */
-int app_led_init(void)
+int app_led_init(const app_led_data_t *const leds)
 {
-	if (!device_is_ready(rgbled.app_led)) {
-		LOG_ERR("Device %s is not ready", rgbled.app_led->name);
+	if (!device_is_ready(leds->app_led)) {
+		LOG_ERR("Device %s is not ready", leds->app_led->name);
 		return -ENODEV;
 	}
 
 	app_led_task_tid = k_thread_create(
 		&app_led_task_thread, app_led_task_stack, K_THREAD_STACK_SIZEOF(app_led_task_stack),
-		app_led_task_worker, NULL, NULL, NULL, CONFIG_APP_LED_THREAD_PRIO, 0, K_NO_WAIT);
+		app_led_task_worker, (void*) leds, NULL, NULL, CONFIG_APP_LED_THREAD_PRIO, 0, K_NO_WAIT);
 
 	LOG_INF("LED task started");
 

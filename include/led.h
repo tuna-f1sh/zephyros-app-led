@@ -180,6 +180,12 @@ typedef enum {
 	Off,	  // off - no operations will be performed
 } LedMode;
 
+typedef enum {
+	APP_LED_TYPE_GPIO,
+	APP_LED_TYPE_PWM,
+	APP_LED_TYPE_STRIP,
+} LedType;
+
 struct app_led_pwm_config {
 	int num_leds;
 	const struct pwm_dt_spec *led;
@@ -218,14 +224,16 @@ typedef struct {
 
 // data PWM LED task
 typedef struct {
-	LedMode mode;				 // current display mode
-	LedMode last_mode;			 // last mode before current to return
+	LedMode mode;	   // current display mode
+	LedMode last_mode; // last mode before current to return
+	LedType hw_type;
+	bool is_rgb;
 	struct k_mutex mutex;			 // mutex for mutli-thread access
 	const struct device *const app_led;	 // pointer to device tree node
 	uint8_t global_brightness;		 // current brightness
 	uint8_t hue;				 // global hue for rainbow
 	bool rainbow;				 // rainbow mode
-	const uint8_t hw_num_leds;	         // number of LEDs in DT prop
+	const uint8_t hw_num_leds;		 // number of LEDs in DT prop
 	const uint8_t num_leds;			 // number of LEDs in sequence
 	rgb_color_t global_color;		 // user colour for manual mode, will revert to this
 	rgb_color_t _color;			 // current global color
@@ -237,8 +245,67 @@ typedef struct {
 	app_led_sequence_data_t sequence_data;	 // data for sequence being run
 } app_led_data_t;
 
-extern app_led_data_t rgbled;
-extern const struct pwm_dt_spec aux_led;
+/**
+ * @brief Statically define and initialize an app_led_data instance with type info.
+ *
+ * @param _name Name of the app_led_data variable.
+ * @param _node_id Devicetree node identifier for the underlying device (GPIO, PWM, SPI, etc.).
+ * @param _num_hw_leds The total number of physical LEDs/pixels/components.
+ * @param _is_rgb A compile-time constant (0 or 1). If non-zero, indicates logical RGB.
+ */
+#define APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, _is_rgb)                              \
+	/* Auto-detect hardware type based on known compat */                                      \
+	static const LedType _name##_auto_hw_type = /* PWM type */                 \
+		COND_CODE_1(                                                                       \
+			DT_NODE_HAS_COMPAT(_node_id, pwm_leds), (APP_LED_TYPE_PWM),                \
+			(/* GPIO type */                                                           \
+			 COND_CODE_1(DT_NODE_HAS_COMPAT(_node_id, gpio_leds), (APP_LED_TYPE_GPIO), \
+				     (/* Fallback to strip type */                                 \
+				      APP_LED_TYPE_STRIP))));                                      \
+	/* Assert divisibility requirement for RGB PWM */ \
+	BUILD_ASSERT( \
+		!((_is_rgb) && ((_name##_auto_hw_type == APP_LED_TYPE_PWM) || (_name##_auto_hw_type == APP_LED_TYPE_GPIO))) || (((_num_hw_leds) % 3) == 0), \
+#_name ": _num_hw_leds(" STRINGIFY(_num_hw_leds) ") must be divisible by 3 for RGB type" \
+	); \
+	static struct app_led_state _name##_state_array[_num_hw_leds] = {0};                       \
+	static app_led_data_t _name = {                                                            \
+		.mode = Manual,                                                                    \
+		.last_mode = Manual,                                                               \
+		.mutex = Z_MUTEX_INITIALIZER(_name.mutex),                                         \
+		.app_led = DEVICE_DT_GET(_node_id),                                                \
+		.hw_type = (_name##_auto_hw_type),                                                 \
+		.is_rgb = (bool)(_is_rgb),                                                         \
+		.hw_num_leds = (_num_hw_leds), /* if RGB, divide by 3 for number of LEDs to        \
+						  control vs hardware */                           \
+		.num_leds =                                                                        \
+			(((_name##_auto_hw_type) == APP_LED_TYPE_PWM || (_name##_auto_hw_type) == APP_LED_TYPE_GPIO) &&    \
+			 (_is_rgb))                                                                \
+				? ((_num_hw_leds) / 3U)                                            \
+				: (_num_hw_leds),                                                  \
+		.global_brightness = 0xFF,                                                         \
+		.global_color = {.r = 0, .g = 0, .b = 0},                                          \
+		._color = {.r = 0, .g = 0, .b = 0},                                                \
+		.hue = 0,                                                                          \
+		.rainbow = false,                                                                  \
+		.state = _name##_state_array,                                                      \
+		.sequence_step = 0,                                                                \
+		.sequence = NULL,                                                                  \
+		.time_sequence_next = 0,                                                           \
+		.sequence_repeat_count = 0,                                                        \
+		.sequence_data = {0},                                                              \
+	}
+
+/* Helper to define a static discrete App LED chain of GPIO or PWM LEDs */
+#define APP_LED_STATIC_IDV_DEFINE(_name, _node_id, _num_hw_leds)                                   \
+BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) || DT_NODE_HAS_COMPAT(_node_id, pwm_leds), #_node_id "must be gpio_leds or pwm_leds"); \
+	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, 0)
+/* Helper to define a static RGB App LED using either GPIO or PWM App LEDs */
+#define APP_LED_STATIC_RGB_DEFINE(_name, _node_id, _num_hw_leds)                                   \
+BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) || DT_NODE_HAS_COMPAT(_node_id, pwm_leds), #_node_id "must be gpio_leds or pwm_leds"); \
+	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, 1)
+/* Helper to define a static RGB App LED strip using the chain_length property for hw_num_leds */
+#define APP_LED_STATIC_STRIP_DEFINE(_name, _node_id)                                               \
+	APP_LED_STATIC_DEFINE(_name, _node_id, DT_PROP(_node_id, chain_length), 1)
 
 void app_led_run_sequence(app_led_data_t *leds, const app_led_sequence_step_t *sequence,
 			  int8_t num_repeat, k_timeout_t block);
@@ -258,7 +325,8 @@ int app_led_blink(app_led_data_t *leds, rgb_color_t c, uint32_t on_period_ms,
  * @param block Timeout for blocking operation
  * @return 0 on success, negative error code on failure
  */
-int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness, uint32_t fade_time_ms, k_timeout_t block);
+int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness,
+		    uint32_t fade_time_ms, k_timeout_t block);
 /* @brief Fade on (brightness 255) over a period of time to global_color
  *
  * Desired color to fade to should be set first with app_led_set_global_color (with
@@ -285,16 +353,19 @@ void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_wait_blink(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block);
-int app_led_init(void);
+int app_led_init(const app_led_data_t *const leds);
 rgb_color_t app_led_hue_to_rgb(uint8_t hue);
 rgb_color_t app_led_hsv_to_rgb(uint8_t hue, uint8_t sat, uint8_t value);
 int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
 int app_led_set_global_brightness(app_led_data_t *leds, uint8_t brightness, k_timeout_t block);
 
-#define app_led_indicate_act(_c)   app_led_blink(&rgbled, RGBHEX(_c), 20, 30, false, K_NO_WAIT);
-#define app_led_indicate_shift(_c) app_led_blink(&rgbled, RGBHEX(_c), 100, 50, false, K_NO_WAIT);
+/* Helper to indicate Rx/Tx activity for example */
+#define app_led_indicate_act(_c) app_led_blink(&rgbled, RGBHEX(_c), 20, 30, false, K_NO_WAIT);
+/* Helper to run error sequence */
 #define app_led_error_indicate()                                                                   \
 	app_led_run_sequence(&rgbled, app_led_error_sequence, 0, 4, K_MSEC(5));
+
+/* -- Sequences -- */
 
 extern const app_led_sequence_step_t app_led_test_sequence[];
 extern const app_led_sequence_step_t app_led_error_sequence[];

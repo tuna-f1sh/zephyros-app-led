@@ -50,4 +50,10 @@ config APP_LED_THREAD_STACK_SIZE
 	  Set the stack size for the LED thread. The default is 1024 bytes.
 	  This may need to be increased if the LED application is using a lot of memory.
 
+config APP_LED_UPDATE_PERIOD
+	int "LED update period (ms)"
+	default 10
+	help
+	  Set the update period for the LED thread.
+
 endif
