@@ -59,14 +59,7 @@ int main(void)
 			 K_MSEC(100)); // Set back to manual explicitly
 	app_led_set_global_color(&rgbled, RGBHEX(White),
 				 K_MSEC(100)); // Set color to Black
-	app_led_fade_sequence[0].color = RGBHEX(White);
-	app_led_fade_sequence[0].start_brightness = 255;
-	app_led_fade_sequence[0].end_brightness = 0;
-	app_led_fade_sequence[1].color = RGBHEX(Black);
-	app_led_fade_sequence[1].start_brightness = 0;
-	app_led_fade_sequence[1].end_brightness = 0;
-	app_led_run_sequence(&rgbled, app_led_fade_sequence, 0, K_MSEC(5));
-	app_led_set_global_brightness(&rgbled, 0, K_MSEC(100)); // Set brightness to 0
+	app_led_fade_off(&rgbled, 1000, K_MSEC(100));
 
 	LOG_INF("Demo finished cycle.");
 

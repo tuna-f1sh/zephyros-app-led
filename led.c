@@ -17,9 +17,8 @@ LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 #if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
 #include <zephyr/drivers/led_strip.h>
 #define LED_NODE_ID	 DT_ALIAS(led_strip)
-#define STRIP_NUM_PIXELS DT_PROP(DT_ALIAS(led_strip), chain_length)
-#define NUM_LEDS	 STRIP_NUM_PIXELS
-static struct led_rgb pixels[STRIP_NUM_PIXELS] = {0};
+#define NUM_LEDS DT_PROP(DT_ALIAS(led_strip), chain_length)
+static struct led_rgb pixels[NUM_LEDS] = {0};
 
 #elif IS_ENABLED(CONFIG_LED_PWM)
 
@@ -88,7 +87,7 @@ static struct k_thread app_led_task_thread;
 static void leds_work(struct k_work *work)
 {
 	if (k_mutex_lock(&rgbled.mutex, K_FOREVER) == 0) {
-		if (led_strip_update_rgb(rgbled.app_led, pixels, STRIP_NUM_PIXELS) != 0) {
+		if (led_strip_update_rgb(rgbled.app_led, pixels, NUM_LEDS) != 0) {
 			LOG_ERR("Couldn't update strip");
 		}
 
@@ -685,6 +684,32 @@ int app_led_blink_sync(app_led_data_t *leds, rgb_color_t c, k_timeout_t block)
 	}
 
 	return err;
+}
+
+int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness, uint32_t fade_time_ms, k_timeout_t block) {
+	app_led_fade_sequence[0].color = leds->global_color;
+	app_led_fade_sequence[0].start_brightness = leds->global_brightness;
+	app_led_fade_sequence[0].end_brightness = 0;
+	app_led_fade_sequence[0].time_in_10ms = fade_time_ms / 10;
+	app_led_fade_sequence[1].color = c;
+	app_led_fade_sequence[1].start_brightness = end_brightness;
+	app_led_fade_sequence[1].end_brightness = end_brightness;
+	app_led_run_sequence(&rgbled, app_led_fade_sequence, 0, block);
+	// do this after starting sequence so gets set in background
+	app_led_set_global_color(&rgbled, c, block);
+	app_led_set_global_brightness(&rgbled, end_brightness, block);
+
+	return 0;
+}
+
+int app_led_fade_off(app_led_data_t *leds, uint32_t fade_time_ms, k_timeout_t block)
+{
+	return app_led_fade_to(leds, leds->global_color, 0, fade_time_ms, block);
+}
+
+int app_led_fade_on(app_led_data_t *leds, uint32_t fade_time_ms, k_timeout_t block)
+{
+	return app_led_fade_to(leds, leds->global_color, 255, fade_time_ms, block);
 }
 
 /* Run sequence now; will switch to sequence state and replace any currently

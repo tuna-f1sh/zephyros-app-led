@@ -247,6 +247,37 @@ int app_led_blink_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, uint32_
 			uint32_t off_period_ms, bool state_override, k_timeout_t block);
 int app_led_blink(app_led_data_t *leds, rgb_color_t c, uint32_t on_period_ms,
 		  uint32_t off_period_ms, bool state_override, k_timeout_t block);
+/* @breif Fade to a color over a period of time
+ *
+ * Maniplates app_led_fade_sequence to set the color and brightness
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param c Color to fade to
+ * @param end_brightness Brightness at the end of the fade
+ * @param fade_time_ms Time in milliseconds for the fade
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
+int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness, uint32_t fade_time_ms, k_timeout_t block);
+/* @brief Fade on (brightness 255) over a period of time to global_color
+ *
+ * Desired color to fade to should be set first with app_led_set_global_color (with
+ * app_led_set_global_brightness set to zero if fading on)
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param fade_time_ms Time in milliseconds for the fade
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
+int app_led_fade_on(app_led_data_t *leds, uint32_t fade_time_ms, k_timeout_t block);
+/* @brief Fade off (brightness 0) over a period of time from global_color
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param fade_time_ms Time in milliseconds for the fade
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
+int app_led_fade_off(app_led_data_t *leds, uint32_t fade_time_ms, k_timeout_t block);
 int app_led_blink_sync_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout_t block);
 int app_led_blink_sync(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
 int app_led_set_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout_t block);

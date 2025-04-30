@@ -28,7 +28,7 @@ tests:
   #   filter: dt_compat_enabled("pwm-leds")
   #   extra_args: CONFIG_PWM=y CONFIG_LED=y CONFIG_LED_PWM=y
 
-  demo_led.ws2812b.nucleo_l432kc:
+  demo_led.ws2812.nucleo_l432kc:
     platform_allow:
       - nucleo_l432kc
     extra_overlay_confs:
