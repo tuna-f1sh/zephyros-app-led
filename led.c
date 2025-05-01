@@ -21,12 +21,6 @@
 LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_LED_STRIP)
-/* Set the device level LED data and update app_led
- *
- * Zephyr LED strip uses a different RGB struct to the app_led struct so convert
- * to that. Work is submitted to update the LED strip because the LED strip
- * driver is not ISR safe.
- * */
 static void leds_strip_update(app_led_data_t *leds)
 {
 	if (k_mutex_lock(&leds->mutex, K_FOREVER) == 0) {
@@ -38,6 +32,12 @@ static void leds_strip_update(app_led_data_t *leds)
 	}
 }
 
+/* Set the device level LED data and update app_led
+ *
+ * Zephyr LED strip uses a different RGB struct to the app_led struct so convert
+ * to that. Work is submitted to update the LED strip because the LED strip
+ * driver is not ISR safe.
+ * */
 static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
 				uint8_t brightness, k_timeout_t block)
 {
@@ -63,7 +63,8 @@ static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t e
 			leds->state[i]._color = c;
 		}
 
-		if (!k_work_is_pending((struct k_work*) &leds->dwork)) {
+		/* schedule the work to update the LED strip if not already pending */
+		if (!k_work_is_pending((struct k_work *)&leds->dwork)) {
 			k_work_schedule(&leds->dwork, K_NO_WAIT);
 		}
 
@@ -1085,10 +1086,12 @@ static void app_led_work_handler(struct k_work *work)
 
 	app_led_update(leds);
 
+	/* Update strip LEDs here if using LED_STRIP driver */
 #if IS_ENABLED(CONFIG_LED_STRIP)
 	leds_strip_update(leds);
 #endif
 
+	/* Reschedule the work if not in Manual or Off mode */
 	if ((leds->mode != Manual && leds->mode != Off) ||
 	    !IS_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL)) {
 		// Calculate next deadline based on period and execution time

@@ -15,19 +15,19 @@ LOG_MODULE_REGISTER(demo_app_led, LOG_LEVEL_INF);
 
 #if IS_ENABLED(CONFIG_LED_STRIP)
 #include <zephyr/drivers/led_strip.h>
-#define LED_NODE_ID	 DT_ALIAS(led_strip)
+#define LED_NODE_ID DT_ALIAS(led_strip)
 
 #elif IS_ENABLED(CONFIG_LED_PWM)
 
 #include <zephyr/drivers/pwm.h>
-#define LED_NODE_ID	       DT_COMPAT_GET_ANY_STATUS_OKAY(pwm_leds)
-#define NUM_LEDS	       DT_CHILD_NUM(LED_NODE_ID)
+#define LED_NODE_ID DT_COMPAT_GET_ANY_STATUS_OKAY(pwm_leds)
+#define NUM_LEDS    DT_CHILD_NUM(LED_NODE_ID)
 
 #elif IS_ENABLED(CONFIG_LED)
 
 #include <zephyr/drivers/gpio.h>
-#define LED_NODE_ID	       DT_COMPAT_GET_ANY_STATUS_OKAY(gpio_leds)
-#define NUM_LEDS	       DT_CHILD_NUM(LED_NODE_ID)
+#define LED_NODE_ID DT_COMPAT_GET_ANY_STATUS_OKAY(gpio_leds)
+#define NUM_LEDS    DT_CHILD_NUM(LED_NODE_ID)
 
 #else
 #error "CONFIG_LED_STRIP, CONFIG_LED or CONFIG_LED_PWM must be set"
@@ -83,7 +83,8 @@ int main(void)
 	 * with a short blink of the LED. This is not a blocking call, so it can be
 	 * used in a loop or in an interrupt context.
 	 *
-	 * It will maintain blink period (50 ms) by not overriding so visable even if called at faster rate.
+	 * It will maintain blink period (50 ms) by not overriding so visable even if called at
+	 * faster rate.
 	 */
 	for (int i = 0; i < 2000; i++) {
 		app_led_indicate_act(&aled, Orange);
@@ -93,14 +94,12 @@ int main(void)
 	/* Run a sequence async from App - see led.h for more details of other sequences */
 	LOG_INF("Setting mode to Sequence (Test Sequence, repeat forever)");
 	/* -1 is repeat indefinitely, 0 is run once, >0 is number of repeats */
-	app_led_run_sequence(&aled, app_led_test_sequence, -1,
-			     K_MSEC(100));
+	app_led_run_sequence(&aled, app_led_test_sequence, -1, K_MSEC(100));
 	/* Block again, since it's -1 it will wait for 3 seconds to let the sequence run */
 	app_led_wait_sequence(&aled, K_SECONDS(3));
 
 	/* Run sine wave 5 times */
-	app_led_run_sequence(&aled, app_led_sine_sequence, 5,
-			     K_MSEC(100));
+	app_led_run_sequence(&aled, app_led_sine_sequence, 5, K_MSEC(100));
 	app_led_wait_sequence(&aled, K_SECONDS(5));
 
 	/* Run rainbow mode; increases hue with each app_led task update to create a rainbow
