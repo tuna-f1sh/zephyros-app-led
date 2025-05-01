@@ -36,7 +36,6 @@ if APP_LED
 	choice
 		prompt "Grayscale mode"
 		default APP_LED_GRAYSCALE_WEIGHTED
-		# depends on APP_LED_PIN_INDIVIDUAL
 		help
 		Set the grayscale mode for non-RGB LEDs.
 
