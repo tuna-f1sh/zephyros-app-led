@@ -13,10 +13,9 @@
 
 LOG_MODULE_REGISTER(demo_app_led, LOG_LEVEL_INF);
 
-#if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
+#if IS_ENABLED(CONFIG_LED_STRIP)
 #include <zephyr/drivers/led_strip.h>
 #define LED_NODE_ID	 DT_ALIAS(led_strip)
-#define NUM_LEDS DT_PROP(DT_ALIAS(led_strip), chain_length)
 
 #elif IS_ENABLED(CONFIG_LED_PWM)
 
@@ -35,10 +34,14 @@ const char *app_led_label[] = {DT_FOREACH_CHILD(LED_NODE_ID, LED_LABEL)};
 #define NUM_LEDS	       ARRAY_SIZE(app_led_label)
 
 #else
-#error "CONFIG_WS2812_STRIP_SPI, CONFIG_LED or CONFIG_LED_PWM must be set"
+#error "CONFIG_LED_STRIP, CONFIG_LED or CONFIG_LED_PWM must be set"
 #endif
 
+#if IS_ENABLED(CONFIG_LED_STRIP)
+APP_LED_STATIC_STRIP_DEFINE(rgbled, LED_NODE_ID);
+#else
 APP_LED_STATIC_DEFINE(rgbled, LED_NODE_ID, NUM_LEDS, CONFIG_APP_LED_PIN_RGB);
+#endif
 
 int main(void)
 {

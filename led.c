@@ -21,6 +21,12 @@
 LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_LED_STRIP)
+/* Set the device level LED data and update app_led
+ *
+ * Zephyr LED strip uses a different RGB struct to the app_led struct so convert
+ * to that. Work is submitted to update the LED strip because the LED strip
+ * driver is not ISR safe.
+ * */
 static void leds_strip_update(app_led_data_t *leds)
 {
 	if (k_mutex_lock(&leds->mutex, K_FOREVER) == 0) {
@@ -32,12 +38,6 @@ static void leds_strip_update(app_led_data_t *leds)
 	}
 }
 
-/* Set the device level LED data and update app_led
- *
- * Zephyr LED strip uses a different RGB struct to the app_led struct so convert
- * to that. Work is submitted to update the LED strip because the LED strip
- * driver is not ISR safe.
- * */
 static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
 				uint8_t brightness, k_timeout_t block)
 {
@@ -61,6 +61,10 @@ static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t e
 		for (int i = start; i < end; i++) {
 			memcpy(&pixels[i], &c_rgb, sizeof(struct led_rgb));
 			leds->state[i]._color = c;
+		}
+
+		if (!k_work_is_pending((struct k_work*) &leds->dwork)) {
+			k_work_schedule(&leds->dwork, K_NO_WAIT);
 		}
 
 		return 0;
@@ -488,7 +492,7 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block)
 		IF_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL, (k_work_cancel_delayable(&leds->dwork);))
 		break;
 	default:
-		IF_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL, (k_work_reschedule(&leds->dwork, K_NO_WAIT);))
+		IF_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL, (k_work_schedule(&leds->dwork, K_NO_WAIT);))
 		break;
 	}
 }
@@ -1075,21 +1079,23 @@ void app_led_update(app_led_data_t *leds)
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 static void app_led_work_handler(struct k_work *work)
 {
-    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-    app_led_data_t *leds = CONTAINER_OF(dwork, app_led_data_t, dwork);
-    int64_t last_update_time = k_uptime_get();
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	app_led_data_t *leds = CONTAINER_OF(dwork, app_led_data_t, dwork);
+	int64_t last_update_time = k_uptime_get();
 
-    app_led_update(leds);
+	app_led_update(leds);
 
 #if IS_ENABLED(CONFIG_LED_STRIP)
-    leds_strip_update(leds);
+	leds_strip_update(leds);
 #endif
 
-    if ((leds->mode != Manual && leds->mode != Off) || !IS_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL)) {
-         // Calculate next deadline based on period and execution time
-         k_timeout_t delay = K_MSEC(MAX(0, CONFIG_APP_LED_UPDATE_PERIOD - k_uptime_delta(&last_update_time)));
-         k_work_reschedule(&leds->dwork, delay);
-    }
+	if ((leds->mode != Manual && leds->mode != Off) ||
+	    !IS_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL)) {
+		// Calculate next deadline based on period and execution time
+		k_timeout_t delay = K_MSEC(
+			MAX(0, CONFIG_APP_LED_UPDATE_PERIOD - k_uptime_delta(&last_update_time)));
+		k_work_reschedule(&leds->dwork, delay);
+	}
 }
 #endif
 
@@ -1109,7 +1115,7 @@ int app_led_init(app_led_data_t *const leds)
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 	/* Init delayed work and call first time to schedule the work */
 	k_work_init_delayable(&leds->dwork, app_led_work_handler);
-	app_led_work_handler((struct k_work*) &leds->dwork);
+	app_led_work_handler((struct k_work *)&leds->dwork);
 #endif
 
 	LOG_INF("App LED %s initialized", leds->app_led->name);

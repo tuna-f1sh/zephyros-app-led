@@ -1,6 +1,24 @@
 #include <zephyr/dt-bindings/led/led.h>
 
 / {
+	// keep leds because default green_led mapped to pb3 which conflicts with spi1_sck and
+	// causes hang: https://github.com/zephyrproject-rtos/zephyr/issues/33169
+	leds: leds {
+		compatible = "gpio-leds";
+		red_led: led_1 {
+			gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;
+			label = "Red LED";
+		};
+		green_led: led_0 {
+			gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;
+			label = "User LD3";
+		};
+		blue_led: led_2 {
+			gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
+			label = "Blue LED";
+		};
+	};
+
 	aliases {
 		led-strip = &led_strip;
 	};
@@ -8,7 +26,7 @@
 
 &spi1 {
 	status = "okay";
-	pinctrl-0 = <&spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>;
+	pinctrl-0 = <&spi1_nss_pa15 &spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>;
 
 	led_strip: ws2812@0 {
 		compatible = "worldsemi,ws2812-spi";
