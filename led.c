@@ -20,18 +20,9 @@
 
 LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 
-#if IS_ENABLED(CONFIG_APP_LED_INTERNAL_THREAD)
-static k_tid_t app_led_task_tid;
-static K_THREAD_STACK_DEFINE(app_led_task_stack, CONFIG_APP_LED_THREAD_STACK_SIZE);
-static struct k_thread app_led_task_thread;
-#endif
-
 #if IS_ENABLED(CONFIG_LED_STRIP)
-/* Work queue for updating the LED strip, so app_* API can be called from ISR */
-static void leds_strip_work(struct k_work *work)
+static void leds_strip_update(app_led_data_t *leds)
 {
-	app_led_data_t *leds = CONTAINER_OF(work, app_led_data_t, work);
-
 	if (k_mutex_lock(&leds->mutex, K_FOREVER) == 0) {
 		if (led_strip_update_rgb(leds->app_led, leds->pixels, leds->hw_num_leds) != 0) {
 			LOG_ERR("Couldn't update strip");
@@ -72,7 +63,6 @@ static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t e
 			leds->state[i]._color = c;
 		}
 
-		k_work_submit(&leds->work);
 		return 0;
 	} else {
 		LOG_ERR("LED index out of range");
@@ -494,10 +484,11 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block)
 	case Manual:
 		leds_set_pixels(leds, 0, leds->num_leds, leds->global_color,
 				leds->global_brightness, block);
-		IF_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL, (k_thread_suspend(app_led_task_tid);))
+	case Off:
+		IF_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL, (k_work_cancel_delayable(&leds->dwork);))
 		break;
 	default:
-		IF_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL, (k_thread_resume(app_led_task_tid);))
+		IF_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL, (k_work_reschedule(&leds->dwork, K_NO_WAIT);))
 		break;
 	}
 }
@@ -1053,7 +1044,7 @@ void app_led_update(app_led_data_t *leds)
 	switch (leds->mode) {
 	case Manual:
 		// if manual mode, just set the colour - will be suspended if
-		// CONFIG_LED_SUSPEND_TASK_MANUAL is set otherwise update ensures LED strip
+		// CONFIG_APP_LED_SUSPEND_TASK_MANUAL is set otherwise update ensures LED strip
 		// is updated even if disconnected
 		leds_set_pixels(leds, 0, leds->num_leds, leds->global_color,
 				leds->global_brightness, K_FOREVER);
@@ -1081,21 +1072,24 @@ void app_led_update(app_led_data_t *leds)
 	}
 }
 
-#if IS_ENABLED(CONFIG_APP_LED_INTERNAL_THREAD)
-static void app_led_task_worker(void *p1, void *p2, void *p3)
+#if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
+static void app_led_work_handler(struct k_work *work)
 {
-	__ASSERT(p1 != NULL, "LED data pointer is NULL");
-	int64_t last = k_uptime_get();
-	app_led_data_t *leds = (app_led_data_t *)p1;
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    app_led_data_t *leds = CONTAINER_OF(dwork, app_led_data_t, dwork);
+    int64_t last_update_time = k_uptime_get();
 
-	// this whole led system would probably be better as a worker with queue of
-	// LED commands to process, app_led_sequence_step_t for example but it sort of
-	// works...
-	while (1) {
-		last = k_uptime_get();
-		app_led_update(leds);
-		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD - (k_uptime_delta(&last))));
-	}
+    app_led_update(leds);
+
+#if IS_ENABLED(CONFIG_LED_STRIP)
+    leds_strip_update(leds);
+#endif
+
+    if ((leds->mode != Manual && leds->mode != Off) || !IS_ENABLED(CONFIG_APP_LED_SUSPEND_TASK_MANUAL)) {
+         // Calculate next deadline based on period and execution time
+         k_timeout_t delay = K_MSEC(MAX(0, CONFIG_APP_LED_UPDATE_PERIOD - k_uptime_delta(&last_update_time)));
+         k_work_reschedule(&leds->dwork, delay);
+    }
 }
 #endif
 
@@ -1112,26 +1106,13 @@ int app_led_init(app_led_data_t *const leds)
 		return -ENODEV;
 	}
 
-	switch (leds->hw_type) {
-#if IS_ENABLED(CONFIG_LED_STRIP)
-	case APP_LED_TYPE_STRIP:
-		__ASSERT(leds->pixels != NULL, "LED strip data pointer is NULL");
-		k_work_init(&leds->work, leds_strip_work);
-		break;
+#if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
+	/* Init delayed work and call first time to schedule the work */
+	k_work_init_delayable(&leds->dwork, app_led_work_handler);
+	app_led_work_handler((struct k_work*) &leds->dwork);
 #endif
-	default:
-		break;
-	}
 
-#if IS_ENABLED(CONFIG_APP_LED_INTERNAL_THREAD)
-	app_led_task_tid =
-		k_thread_create(&app_led_task_thread, app_led_task_stack,
-				K_THREAD_STACK_SIZEOF(app_led_task_stack), app_led_task_worker,
-				(void *)leds, NULL, NULL, CONFIG_APP_LED_THREAD_PRIO, 0, K_NO_WAIT);
-	k_thread_name_set(&app_led_task_thread, "app_led");
-
-	LOG_INF("LED task started");
-#endif
+	LOG_INF("App LED %s initialized", leds->app_led->name);
 
 	return 0;
 }

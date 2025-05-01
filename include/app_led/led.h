@@ -1,15 +1,21 @@
+/* RGB color struct with union for easy access to RGB values, hex value, and byte array */
 typedef struct {
 	union {
 		struct {
-			uint8_t r;
-			uint8_t g;
-			uint8_t b;
+			uint8_t r; // red
+			uint8_t g; // green
+			uint8_t b; // blue
 		};
-		uint8_t bytes[3];
-		uint32_t hex;
+		uint8_t bytes[3];  // array of bytes
+		uint32_t hex;      // hex value
 	};
 } rgb_color_t;
 
+/* * RGB color macros
+ * RGB(_r, _g, _b) - create a rgb_color_t from r,g,b values
+ * RGBHEX(_code) - create a rgb_color_t from hex code
+ * HEXRGB(_c) - convert a rgb_color_t to hex code
+ */
 #define RGB(_r, _g, _b)                                                                            \
 	(rgb_color_t)                                                                              \
 	{                                                                                          \
@@ -19,7 +25,7 @@ typedef struct {
 	(rgb_color_t){.r = ((_code) >> 16) & 0xFF, .g = ((_code) >> 8) & 0xFF, .b = (_code) & 0xFF}
 #define HEXRGB(_c) (((_c).r << 16) | ((_c).g << 8) | (_c).b)
 
-/// Predefined RGB colors - from FastLED
+/* Predefined RGB colors - from FastLED */
 typedef enum {
 	AliceBlue = 0xF0F8FF,		 ///< @htmlcolorblock{F0F8FF}
 	Amethyst = 0x9966CC,		 ///< @htmlcolorblock{9966CC}
@@ -170,9 +176,9 @@ typedef enum {
 	YellowGreen = 0x9ACD32,		 ///< @htmlcolorblock{9ACD32}
 } CRGB;
 
+/* Modes of the app_led module */
 typedef enum {
 	Manual,	  // manual code and use set_led etc. state machine will not clear
-		  // (default)
 	Rainbow,  // rainbow cycle
 	Blink,	  // use app_led_blink functions, app_led_state to control
 	Sequence, // running sequence
@@ -180,10 +186,11 @@ typedef enum {
 	Off,	  // off - no operations will be performed
 } LedMode;
 
+/* Used to tag app_led_data_t with the type of LED hardware */
 typedef enum {
-	APP_LED_TYPE_GPIO,
-	APP_LED_TYPE_PWM,
-	APP_LED_TYPE_STRIP,
+	APP_LED_TYPE_GPIO, // GPIO LED
+	APP_LED_TYPE_PWM, // PWM LED
+	APP_LED_TYPE_STRIP, // RGB LED strip
 } LedType;
 
 struct app_led_pwm_config {
@@ -192,11 +199,11 @@ struct app_led_pwm_config {
 };
 
 struct led_gpio_config {
-	size_t num_leds;
+	int num_leds;
 	const struct gpio_dt_spec *led;
 };
 
-// manages state of each RGB LED
+/* struct to hold state of each LED */
 struct app_led_state {
 	rgb_color_t color;	   // desired color
 	rgb_color_t _color;	   // actual color set - different for fade/blink check etc
@@ -204,6 +211,7 @@ struct app_led_state {
 	uint32_t off_time_ms_left; // time left off for blink
 };
 
+/* struct to hold sequence data */
 typedef struct {
 	uint16_t count;	    // counter for sequence
 	rgb_color_t color;  // color to set at this step
@@ -212,47 +220,52 @@ typedef struct {
 	int64_t last_tick;  // last tick for sequence timing
 } app_led_sequence_data_t;
 
-// struct for a sequence step; color and time to display
+/* sequence function pointer type */
+typedef void (*app_led_sequence_func_t) (void *const leds, const void *const step, k_timeout_t block);
+
+/* struct to hold sequence step data */
 typedef struct {
-	rgb_color_t color;
-	void (*fnc)(void *const leds, const void *const step, k_timeout_t block);
-	uint8_t time_in_10ms;	  // 0xFF for last step, colour will be set for exit
-	uint8_t start_brightness; // brightness to start sequence
-	uint8_t end_brightness;	  // brightness to end sequence
-	uint8_t decay_rate;	  // rate to decay brightness 0xFF for no decay
+	rgb_color_t color;           // color to set at this step
+	app_led_sequence_func_t fnc; // optional function to call for this step
+	uint8_t time_in_10ms;	     // 0xFF for last step, colour will be set for exit
+	uint8_t start_brightness;    // brightness to start sequence
+	uint8_t end_brightness;	     // brightness to end sequence
+	uint8_t decay_rate;	     // rate to decay brightness 0xFF for no decay
 } app_led_sequence_step_t;
 
 typedef int (*app_led_set_pixels_func_t)(void *leds, uint16_t start, uint16_t end, rgb_color_t c,
 					 uint8_t brightness, k_timeout_t block);
 
-// data PWM LED task
+/* Main struct for controllable app_led device */
 typedef struct {
-	LedMode mode;	   // current display mode
-	LedMode last_mode; // last mode before current to return
-	LedType hw_type;
-	bool is_rgb;
-	struct k_mutex mutex;			 // mutex for mutli-thread access
-	const struct device *const app_led;	 // pointer to device tree node
-	uint8_t global_brightness;		 // current brightness
-	uint8_t hue;				 // global hue for rainbow
-	bool rainbow;				 // rainbow mode
-	const uint8_t hw_num_leds;		 // number of LEDs in DT prop
-	const uint8_t num_leds;			 // number of LEDs in sequence
-	rgb_color_t global_color;		 // user colour for manual mode, will revert to this
-	rgb_color_t _color;			 // current global color
-	struct app_led_state *const state;	 // state of each led
-	uint8_t sequence_step;			 // sequence step index
-	const app_led_sequence_step_t *sequence; // current sequence frame
-	uint32_t time_sequence_next;		 // tick to next
-	int8_t sequence_repeat_count;		 // -1 to repeat forever
-	app_led_sequence_data_t sequence_data;	 // data for sequence being run
-	app_led_set_pixels_func_t set_pixels;	 // function to set pixels
+	LedMode mode;				// current display mode
+	LedMode last_mode; 			// last mode before current to return
+	LedType hw_type;			// tagged hardware type for any runtime checks
+	bool is_rgb;				// true if RGB LED strip
+	struct k_mutex mutex;			// mutex for mutli-thread access
+	const struct device *const app_led;	// pointer to device tree node
+	uint8_t global_brightness;		// current brightness
+	uint8_t hue;				// global hue for rainbow
+	bool rainbow;				// rainbow mode
+	const uint8_t hw_num_leds;		// number of LEDs in DT prop
+	const uint8_t num_leds;			// number of LEDs in sequence
+	rgb_color_t global_color;		// user colour for manual mode, will revert to this
+	rgb_color_t _color;			// current global color
+	struct app_led_state *const state;	// state of each led
+	uint8_t sequence_step;			// sequence step index
+	const app_led_sequence_step_t *sequence;// current sequence frame
+	uint32_t time_sequence_next;		// tick to next
+	int8_t sequence_repeat_count;		// -1 to repeat forever
+	app_led_sequence_data_t sequence_data;	// data for sequence being run
+	app_led_set_pixels_func_t set_pixels;	// function to set pixels
 #if IS_ENABLED(CONFIG_LED_STRIP)
-	struct led_rgb *const pixels;		 // pixel buffer for RGB LED strip, NULL if not used
+	struct led_rgb *const pixels;		// pixel buffer for RGB LED strip, NULL if not used
 #else
-	void *const pixels;			 // pixel buffer for RGB LED strip, NULL if not used
+	void *const pixels;			// pixel buffer for RGB LED strip, NULL if not used
 #endif
-	struct k_work work;			 // work item for LED task
+#if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
+	struct k_work_delayable dwork;		// delayed work for state machine update
+#endif
 } app_led_data_t;
 
 /**
@@ -272,6 +285,7 @@ typedef struct {
 			 COND_CODE_1(DT_NODE_HAS_COMPAT(_node_id, gpio_leds), (APP_LED_TYPE_GPIO), \
 				     (/* Fallback to strip type */                                 \
 				      APP_LED_TYPE_STRIP))));                                      \
+	/* If pin type and RGB divide 3 hardware count */                                          \
 	static const uint8_t _name##_num_logical_leds =                                            \
 		(_is_rgb) && (((_name##_auto_hw_type) == APP_LED_TYPE_PWM) ||                      \
 			      ((_name##_auto_hw_type) == APP_LED_TYPE_GPIO))                       \
@@ -373,12 +387,16 @@ int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t bl
 int app_led_set_global_brightness(app_led_data_t *leds, uint8_t brightness, k_timeout_t block);
 
 /* Helper to indicate Rx/Tx activity for example */
-#define app_led_indicate_act(_c) app_led_blink(&rgbled, RGBHEX(_c), 20, 30, false, K_NO_WAIT);
+#define app_led_indicate_act(_l, _c) app_led_blink(_l, RGBHEX(_c), 20, 30, false, K_NO_WAIT);
 /* Helper to run error sequence */
-#define app_led_error_indicate()                                                                   \
-	app_led_run_sequence(&rgbled, app_led_error_sequence, 0, 4, K_MSEC(5));
+#define app_led_error_indicate(_l)                                                                   \
+	app_led_run_sequence(_l, app_led_error_sequence, 0, 4, K_MSEC(5));
 
-/* -- Sequences -- */
+/**
+ * Sequences
+ *
+ * See led_sequences.c for details on each sequence and how to define them.
+ */
 
 extern const app_led_sequence_step_t app_led_test_sequence[];
 extern const app_led_sequence_step_t app_led_error_sequence[];

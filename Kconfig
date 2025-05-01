@@ -57,11 +57,13 @@ if APP_LED
 		help
 		Set the update period for the LED thread.
 
-	menuconfig APP_LED_INTERNAL_THREAD
-		bool "App LED internal thread"
+	menuconfig APP_LED_USE_WORKQUEUE
+		bool "Use workqueue for LED updates"
 		default y
+		help
+		Use a workqueue for LED updates. If not selected, the user App must call app_led_update() at CONFIG_APP_LED_UPDATE_PERIOD intervals for each App LED instance.
 
-	if APP_LED_INTERNAL_THREAD
+	if APP_LED_USE_WORKQUEUE
 
 		config APP_LED_SUSPEND_TASK_MANUAL
 			bool "Suspend LED task on manual mode"
@@ -70,15 +72,6 @@ if APP_LED
 			If enabled, the LED task is suspended when the node is in manual mode since there is no need to update the LED state in the background.
 			If using LED_STRIP, if might be preferable to disable this so that the strip is continually refreshed.
 
-		config APP_LED_THREAD_PRIO
-			int "LED thread priority"
-			default 1
-
-		config APP_LED_THREAD_STACK_SIZE
-			int "LED thread stack size"
-			default 512
-			help
-			Set the stack size for the LED thread.
 
 	endif
 

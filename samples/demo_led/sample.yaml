@@ -9,6 +9,12 @@ tests:
     platform_allow:
       - nucleo_l432kc
 
+  demo_led.no_workqueue:
+    platform_allow:
+      - nucleo_l432kc
+    extra_args:
+      - CONFIG_APP_LED_USE_WORKQUEUE=n
+
   # demo_led.gpio.generic:
   #   filter: dt_compat_enabled("gpio-leds")
 
@@ -24,20 +30,13 @@ tests:
   #   depends_on:
   #     - pwm
   #   filter: dt_compat_enabled("pwm-leds")
-  #   extra_args: CONFIG_PWM=y CONFIG_LED=y CONFIG_LED_PWM=y
+  #   extra_overlay_confs:
+  #     - prj_pwm.conf
 
   demo_led.ws2812.nucleo_l432kc:
     platform_allow:
       - nucleo_l432kc
-    filter:
-      - dt_compat_enabled("worldsemi,ws2812")
     extra_overlay_confs:
       - prj_ws2812.conf
     extra_dtc_overlay_files:
       - boards/nucleo_l432kc_ws2812.overlay
-
-  # demo_led.ws2812b.generic:
-  #   depends_on:
-  #     - spi
-  #   filter: dt_compat_enabled("worldsemi,ws2812-spi")
-  #   extra_args: CONFIG_SPI=y CONFIG_LED_STRIP=y CONFIG_WS2812_STRIP_SPI=y

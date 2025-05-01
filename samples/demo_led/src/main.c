@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @brief App LED demo application
+ *
+ * Demos main app_led API with a single RGB LED strip or GPIO/PWM LEDs
+ *
+ */
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -77,7 +84,7 @@ int main(void)
 	 * It will maintain blink period (50 ms) by not overriding so visable even if called at faster rate.
 	 */
 	for (int i = 0; i < 2000; i++) {
-		app_led_indicate_act(Orange);
+		app_led_indicate_act(&rgbled, Orange);
 		k_sleep(K_MSEC(1));
 	}
 
