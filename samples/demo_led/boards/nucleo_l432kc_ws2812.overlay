@@ -19,7 +19,7 @@
 		frame-format = <32768>; /* SPI_FRAME_FORMAT_TI */
 
 		/* WS2812 */
-		chain-length = <16>; /* arbitrary; change at will */
+		chain-length = <6>; /* arbitrary; change at will */
 		reset-delay = <50>; /* default 8 us but 50 us in datasheet and helps prevent flicker */
 		spi-one-frame = <0x70>;
 		spi-zero-frame = <0x40>;

@@ -222,6 +222,9 @@ typedef struct {
 	uint8_t decay_rate;	  // rate to decay brightness 0xFF for no decay
 } app_led_sequence_step_t;
 
+typedef int (*app_led_set_pixels_func_t)(void *leds, uint16_t start, uint16_t end, rgb_color_t c,
+					 uint8_t brightness, k_timeout_t block);
+
 // data PWM LED task
 typedef struct {
 	LedMode mode;	   // current display mode
@@ -237,12 +240,19 @@ typedef struct {
 	const uint8_t num_leds;			 // number of LEDs in sequence
 	rgb_color_t global_color;		 // user colour for manual mode, will revert to this
 	rgb_color_t _color;			 // current global color
-	struct app_led_state *state;		 // state of each led
+	struct app_led_state *const state;	 // state of each led
 	uint8_t sequence_step;			 // sequence step index
 	const app_led_sequence_step_t *sequence; // current sequence frame
 	uint32_t time_sequence_next;		 // tick to next
 	int8_t sequence_repeat_count;		 // -1 to repeat forever
 	app_led_sequence_data_t sequence_data;	 // data for sequence being run
+	app_led_set_pixels_func_t set_pixels;	 // function to set pixels
+#if IS_ENABLED(CONFIG_LED_STRIP)
+	struct led_rgb *const pixels;		 // pixel buffer for RGB LED strip, NULL if not used
+#else
+	void *const pixels;			 // pixel buffer for RGB LED strip, NULL if not used
+#endif
+	struct k_work work;			 // work item for LED task
 } app_led_data_t;
 
 /**
@@ -255,19 +265,22 @@ typedef struct {
  */
 #define APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, _is_rgb)                              \
 	/* Auto-detect hardware type based on known compat */                                      \
-	static const LedType _name##_auto_hw_type = /* PWM type */                 \
+	static const LedType _name##_auto_hw_type = /* PWM type */                                 \
 		COND_CODE_1(                                                                       \
 			DT_NODE_HAS_COMPAT(_node_id, pwm_leds), (APP_LED_TYPE_PWM),                \
 			(/* GPIO type */                                                           \
 			 COND_CODE_1(DT_NODE_HAS_COMPAT(_node_id, gpio_leds), (APP_LED_TYPE_GPIO), \
 				     (/* Fallback to strip type */                                 \
 				      APP_LED_TYPE_STRIP))));                                      \
-	/* Assert divisibility requirement for RGB PWM */ \
-	BUILD_ASSERT( \
-		!((_is_rgb) && ((_name##_auto_hw_type == APP_LED_TYPE_PWM) || (_name##_auto_hw_type == APP_LED_TYPE_GPIO))) || (((_num_hw_leds) % 3) == 0), \
-#_name ": _num_hw_leds(" STRINGIFY(_num_hw_leds) ") must be divisible by 3 for RGB type" \
-	); \
-	static struct app_led_state _name##_state_array[_num_hw_leds] = {0};                       \
+	static const uint8_t _name##_num_logical_leds =                                            \
+		(_is_rgb) && (((_name##_auto_hw_type) == APP_LED_TYPE_PWM) ||                      \
+			      ((_name##_auto_hw_type) == APP_LED_TYPE_GPIO))                       \
+			? ((_num_hw_leds) / 3U)                                                    \
+			: (_num_hw_leds);                                                          \
+	static struct app_led_state _name##_state_array[(_num_hw_leds)] = {0};                     \
+	COND_CODE_1(DT_NODE_HAS_PROP(_node_id, chain_length),\
+		    (static struct led_rgb _name##_pixel_buffer[(_num_hw_leds)] = {0};),           \
+		    (static void *const _name##_pixel_buffer = NULL;))                             \
 	static app_led_data_t _name = {                                                            \
 		.mode = Manual,                                                                    \
 		.last_mode = Manual,                                                               \
@@ -275,13 +288,8 @@ typedef struct {
 		.app_led = DEVICE_DT_GET(_node_id),                                                \
 		.hw_type = (_name##_auto_hw_type),                                                 \
 		.is_rgb = (bool)(_is_rgb),                                                         \
-		.hw_num_leds = (_num_hw_leds), /* if RGB, divide by 3 for number of LEDs to        \
-						  control vs hardware */                           \
-		.num_leds =                                                                        \
-			(((_name##_auto_hw_type) == APP_LED_TYPE_PWM || (_name##_auto_hw_type) == APP_LED_TYPE_GPIO) &&    \
-			 (_is_rgb))                                                                \
-				? ((_num_hw_leds) / 3U)                                            \
-				: (_num_hw_leds),                                                  \
+		.hw_num_leds = (_num_hw_leds),                                                     \
+		.num_leds = (_name##_num_logical_leds),                                            \
 		.global_brightness = 0xFF,                                                         \
 		.global_color = {.r = 0, .g = 0, .b = 0},                                          \
 		._color = {.r = 0, .g = 0, .b = 0},                                                \
@@ -293,15 +301,20 @@ typedef struct {
 		.time_sequence_next = 0,                                                           \
 		.sequence_repeat_count = 0,                                                        \
 		.sequence_data = {0},                                                              \
+		.pixels = _name##_pixel_buffer,                                                    \
 	}
 
 /* Helper to define a static discrete App LED chain of GPIO or PWM LEDs */
 #define APP_LED_STATIC_IDV_DEFINE(_name, _node_id, _num_hw_leds)                                   \
-BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) || DT_NODE_HAS_COMPAT(_node_id, pwm_leds), #_node_id "must be gpio_leds or pwm_leds"); \
+	BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) ||                                    \
+			     DT_NODE_HAS_COMPAT(_node_id, pwm_leds),                               \
+		     #_node_id "must be gpio_leds or pwm_leds");                                   \
 	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, 0)
 /* Helper to define a static RGB App LED using either GPIO or PWM App LEDs */
 #define APP_LED_STATIC_RGB_DEFINE(_name, _node_id, _num_hw_leds)                                   \
-BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) || DT_NODE_HAS_COMPAT(_node_id, pwm_leds), #_node_id "must be gpio_leds or pwm_leds"); \
+	BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) ||                                    \
+			     DT_NODE_HAS_COMPAT(_node_id, pwm_leds),                               \
+		     #_node_id "must be gpio_leds or pwm_leds");                                   \
 	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, 1)
 /* Helper to define a static RGB App LED strip using the chain_length property for hw_num_leds */
 #define APP_LED_STATIC_STRIP_DEFINE(_name, _node_id)                                               \
@@ -353,7 +366,7 @@ void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_wait_blink(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block);
-int app_led_init(const app_led_data_t *const leds);
+int app_led_init(app_led_data_t *const leds);
 rgb_color_t app_led_hue_to_rgb(uint8_t hue);
 rgb_color_t app_led_hsv_to_rgb(uint8_t hue, uint8_t sat, uint8_t value);
 int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);

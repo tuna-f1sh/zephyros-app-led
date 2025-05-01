@@ -8,11 +8,9 @@ tests:
   demo_led.gpio.nucleo_l432kc:
     platform_allow:
       - nucleo_l432kc
-    extra_args: CONFIG_GPIO=y CONFIG_LED=y
 
   # demo_led.gpio.generic:
   #   filter: dt_compat_enabled("gpio-leds")
-  #   extra_args: CONFIG_GPIO=y CONFIG_LED=y
 
   demo_led.pwm.nucleo_l432kc:
     platform_allow:
@@ -31,6 +29,8 @@ tests:
   demo_led.ws2812.nucleo_l432kc:
     platform_allow:
       - nucleo_l432kc
+    filter:
+      - dt_compat_enabled("worldsemi,ws2812")
     extra_overlay_confs:
       - prj_ws2812.conf
     extra_dtc_overlay_files:

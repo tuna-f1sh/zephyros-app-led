@@ -1,6 +1,3 @@
-// Some of this code is based on the led_pwm driver in Zephyr but modified to
-// allow multi-threaded access and to allow for a sequence of colours to be
-// displayed, RGB brightness etc.
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
@@ -15,32 +12,34 @@
 #if IS_ENABLED(CONFIG_LED_PWM)
 #include <zephyr/drivers/pwm.h>
 #endif
-#if IS_ENABLED(CONFIG_LED)
+#if IS_ENABLED(CONFIG_LED_GPIO)
 #include <zephyr/drivers/gpio.h>
 #endif
 
-#include "led.h"
+#include <app_led/led.h>
 
 LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 
+#if IS_ENABLED(CONFIG_APP_LED_INTERNAL_THREAD)
 static k_tid_t app_led_task_tid;
 static K_THREAD_STACK_DEFINE(app_led_task_stack, CONFIG_APP_LED_THREAD_STACK_SIZE);
 static struct k_thread app_led_task_thread;
+#endif
 
-#if IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
+#if IS_ENABLED(CONFIG_LED_STRIP)
 /* Work queue for updating the LED strip, so app_* API can be called from ISR */
-static void leds_work(struct k_work *work)
+static void leds_strip_work(struct k_work *work)
 {
-	if (k_mutex_lock(&rgbled.mutex, K_FOREVER) == 0) {
-		if (led_strip_update_rgb(rgbled.app_led, pixels, NUM_LEDS) != 0) {
+	app_led_data_t *leds = CONTAINER_OF(work, app_led_data_t, work);
+
+	if (k_mutex_lock(&leds->mutex, K_FOREVER) == 0) {
+		if (led_strip_update_rgb(leds->app_led, leds->pixels, leds->hw_num_leds) != 0) {
 			LOG_ERR("Couldn't update strip");
 		}
 
-		k_mutex_unlock(&rgbled.mutex);
+		k_mutex_unlock(&leds->mutex);
 	}
 }
-
-K_WORK_DEFINE(app_led_work, leds_work);
 
 /* Set the device level LED data and update app_led
  *
@@ -48,35 +47,43 @@ K_WORK_DEFINE(app_led_work, leds_work);
  * to that. Work is submitted to update the LED strip because the LED strip
  * driver is not ISR safe.
  * */
-static int _app_led_set_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
-			       uint8_t brightness, k_timeout_t block)
+static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
+				uint8_t brightness, k_timeout_t block)
 {
-	struct led_rgb c_rgb;
+	static struct led_rgb c_rgb;
 
 	if (start < leds->hw_num_leds && end <= leds->hw_num_leds) {
-		c_rgb = (struct led_rgb){
-			.r = (uint16_t)c.r * brightness / 255,
-			.g = (uint16_t)c.g * brightness / 255,
-			.b = (uint16_t)c.b * brightness / 255,
-		};
+		// scale
+		c.r = (uint8_t)((uint16_t)c.r * brightness / 255);
+		c.g = (uint8_t)((uint16_t)c.g * brightness / 255);
+		c.b = (uint8_t)((uint16_t)c.b * brightness / 255);
 
 		leds->_color = c;
 
+		c_rgb = (struct led_rgb){
+			.r = c.r,
+			.g = c.g,
+			.b = c.b,
+		};
+
+		struct led_rgb *pixels = (struct led_rgb *)leds->pixels;
 		for (int i = start; i < end; i++) {
 			memcpy(&pixels[i], &c_rgb, sizeof(struct led_rgb));
 			leds->state[i]._color = c;
 		}
 
-		k_work_submit(&app_led_work);
+		k_work_submit(&leds->work);
 		return 0;
 	} else {
 		LOG_ERR("LED index out of range");
 		return -EINVAL;
 	}
 }
-#elif IS_ENABLED(CONFIG_LED_PWM)
-static int _app_led_set_pwm_brightness(app_led_data_t *leds, uint8_t i, uint8_t value,
-				       k_timeout_t block)
+#endif
+
+#if IS_ENABLED(CONFIG_LED_PWM)
+static int leds_set_pwm_brightness(app_led_data_t *leds, uint8_t i, uint8_t value,
+				   k_timeout_t block)
 {
 	const struct app_led_pwm_config *config = leds->app_led->config;
 	const struct pwm_dt_spec *dt_led;
@@ -96,9 +103,11 @@ static int _app_led_set_pwm_brightness(app_led_data_t *leds, uint8_t i, uint8_t 
 		return -EBUSY;
 	}
 }
-#else
-static int _app_led_set_gpio_brightness(app_led_data_t *leds, uint8_t i, uint8_t value,
-					k_timeout_t block)
+#endif
+
+#if IS_ENABLED(CONFIG_LED_GPIO)
+static int leds_set_gpio_brightness(app_led_data_t *leds, uint8_t i, uint8_t value,
+				    k_timeout_t block)
 {
 	const struct led_gpio_config *config = leds->app_led->config;
 	const struct gpio_dt_spec *led_gpio;
@@ -121,71 +130,124 @@ static int _app_led_set_gpio_brightness(app_led_data_t *leds, uint8_t i, uint8_t
 }
 #endif
 
-#if (IS_ENABLED(CONFIG_LED_PWM) || IS_ENABLED(CONFIG_LED)) && !IS_ENABLED(CONFIG_WS2812_STRIP_SPI)
-static inline int _app_led_set_brightness(app_led_data_t *leds, uint8_t i, uint8_t value,
-					  k_timeout_t block)
+static int leds_set_brightness(app_led_data_t *leds, uint8_t i, uint8_t value, k_timeout_t block)
 {
+	switch (leds->hw_type) {
 #if IS_ENABLED(CONFIG_LED_PWM)
-	return _app_led_set_pwm_brightness(leds, i, value, block);
-#else
-	return _app_led_set_gpio_brightness(leds, i, value, block);
+	case APP_LED_TYPE_PWM:
+		return leds_set_pwm_brightness(leds, i, value, block);
 #endif
+#if IS_ENABLED(CONFIG_LED_GPIO)
+	case APP_LED_TYPE_GPIO:
+		return leds_set_gpio_brightness(leds, i, value, block);
+#endif
+	default:
+		LOG_ERR("Unsupported LED type: should not be here!");
+		return -EINVAL;
+	}
 }
 
-static int _app_led_set_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
-			       uint8_t brightness, k_timeout_t block)
+static int leds_set_pin_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c, uint8_t brightness,
+			      k_timeout_t block)
 {
 	int err;
 
-#if IS_ENABLED(CONFIG_APP_LED_PIN_RGB)
-	if (start * 3 < leds->hw_num_leds && end * 3 <= leds->hw_num_leds) {
-		// scale
-		c.r = (uint16_t)c.r * brightness / 255;
-		c.g = (uint16_t)c.g * brightness / 255;
-		c.b = (uint16_t)c.b * brightness / 255;
-
-		leds->_color = c;
-
-		for (int i = start; i < end; i += 3) {
+	if (leds->is_rgb) {
+		/* hw base index is *3 */
+		if ((i * 3 + 2) < leds->hw_num_leds) {
 			leds->state[i]._color = c;
-			err = _app_led_set_brightness(leds, i, c.r, block);
-			err = _app_led_set_brightness(leds, i + 1, c.g, block);
-			err = _app_led_set_brightness(leds, i + 2, c.b, block);
+			err = leds_set_brightness(leds, i, c.r, block);
+			if (!err)
+				err = leds_set_brightness(leds, i + 1, c.g, block);
+			if (!err)
+				err = leds_set_brightness(leds, i + 2, c.b, block);
 
 			if (err != 0) {
 				return err;
 			}
+		} else {
+			LOG_ERR("LED index out of range");
+			return -EINVAL;
 		}
-	}
+	} else {
+		if (i < leds->hw_num_leds) {
+			leds->state[i]._color = c;
+#if IS_ENABLED(CONFIG_APP_LED_GRAYSCALE_WEIGHTED)
+			uint8_t grayscale_brightness =
+				(uint8_t)(0.299 * c.r + 0.587 * c.g + 0.114 * c.b);
+#elif IS_ENABLED(CONFIG_APP_LED_GRAYSCALE_AVERAGE)
+			uint8_t grayscale_brightness = (uint8_t)(((uint16_t)c.r + c.g + c.b) / 3);
 #else
-	if (start < leds->hw_num_leds && end <= leds->hw_num_leds) {
-		// scale
-		c.r = (uint16_t)c.r * brightness / 255;
-		c.g = (uint16_t)c.g * brightness / 255;
-		c.b = (uint16_t)c.b * brightness / 255;
-
-		leds->_color = c;
-
-		for (int i = start; i < end; i++) {
-			leds->state[i]._color = c;
-			err = _app_led_set_brightness(leds, i, c.r + c.g + c.b, block);
+			uint8_t grayscale_brightness = c.hex > 0 ? 255 : 0;
+#endif
+			err = leds_set_brightness(leds, i, grayscale_brightness, block);
 
 			if (err != 0) {
 				return err;
 			}
+		} else {
+			LOG_ERR("LED index out of range");
+			return -EINVAL;
 		}
 	}
-#endif
 
 	return 0;
 }
+
+static int leds_set_pin_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
+			       uint8_t brightness, k_timeout_t block)
+{
+	int err;
+	if (start < leds->num_leds && end <= leds->num_leds) {
+		// scale
+		c.r = (uint8_t)((uint16_t)c.r * brightness / 255);
+		c.g = (uint8_t)((uint16_t)c.g * brightness / 255);
+		c.b = (uint8_t)((uint16_t)c.b * brightness / 255);
+		// TODO this is legacy and not representative of the actual color if changing sector
+		// it's just used for toggle whole strip
+		leds->_color = c;
+
+		for (int i = start; i < end; i++) {
+			err = leds_set_pin_pixel(leds, i, c, brightness, block);
+
+			if (err != 0) {
+				return err;
+			}
+		}
+	} else {
+		LOG_ERR("LED index out of range");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int leds_set_pixels(app_led_data_t *leds, uint16_t start, uint16_t end, rgb_color_t c,
+			   uint8_t brightness, k_timeout_t block)
+{
+	switch (leds->hw_type) {
+#if IS_ENABLED(CONFIG_LED_STRIP)
+	case APP_LED_TYPE_STRIP:
+		return led_set_strip_pixels(leds, start, end, c, brightness, block);
 #endif
+#if IS_ENABLED(CONFIG_LED_PWM)
+	case APP_LED_TYPE_PWM:
+#endif
+#if IS_ENABLED(CONFIG_LED_GPIO)
+	case APP_LED_TYPE_GPIO:
+#endif
+		return leds_set_pin_pixels(leds, start, end, c, brightness, block);
+	default:
+		LOG_ERR("Unsupported LED type: should not be here!");
+		return -EINVAL;
+	}
+}
 
 /* Set a single pixel on the LED strip */
-static inline int _app_led_set_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c,
-				     uint8_t brightness, k_timeout_t block)
+static inline int leds_set_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c,
+				 uint8_t brightness, k_timeout_t block)
 {
-	return _app_led_set_pixels(leds, i, i + 1, c, brightness, block);
+	return leds_set_pixels(leds, i, i + 1, c, brightness, block);
 }
 
 /* Get the current set RGB value of a pixel as a rgb_color_t */
@@ -348,7 +410,7 @@ int app_led_set_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout
 		k_mutex_unlock(&leds->mutex);
 	}
 
-	return _app_led_set_pixel(leds, i, c, leds->global_brightness, block);
+	return leds_set_pixel(leds, i, c, leds->global_brightness, block);
 }
 
 /* Set the color of all LEDs outside of a sequence/blink state; the fallback
@@ -361,7 +423,7 @@ int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t bl
 	}
 
 	if (leds->mode == Manual) {
-		return _app_led_set_pixels(leds, 0, leds->num_leds, c, leds->global_brightness, block);
+		return leds_set_pixels(leds, 0, leds->num_leds, c, leds->global_brightness, block);
 	} else {
 		return 0;
 	}
@@ -376,8 +438,8 @@ int app_led_set_global_brightness(app_led_data_t *leds, uint8_t brightness, k_ti
 	}
 
 	if (leds->mode == Manual) {
-		return _app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color, brightness,
-					   block);
+		return leds_set_pixels(leds, 0, leds->num_leds, leds->global_color, brightness,
+				       block);
 	} else {
 		return 0;
 	}
@@ -395,7 +457,7 @@ void app_led_fade_color(app_led_data_t *leds, uint8_t step, rgb_color_t target, 
 		app_led_get_pixel_rgb(leds, i, &update);
 		fade_color(&update, &target, step);
 		leds->state[i].color = update;
-		_app_led_set_pixel(leds, i, update, leds->global_brightness, block);
+		leds_set_pixel(leds, i, update, leds->global_brightness, block);
 	}
 }
 
@@ -408,7 +470,7 @@ void app_led_blend(app_led_data_t *leds, rgb_color_t c, uint8_t blend, k_timeout
 		app_led_get_pixel_rgb(leds, i, &update);
 		blend_color(&update, &c, blend);
 		leds->state[i].color = update;
-		_app_led_set_pixel(leds, i, update, leds->global_brightness, block);
+		leds_set_pixel(leds, i, update, leds->global_brightness, block);
 	}
 }
 
@@ -430,13 +492,12 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block)
 	// act on change
 	switch (mode) {
 	case Manual:
-		_app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color,
-				    leds->global_brightness, block);
-		if (IS_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL))
-			k_thread_suspend(app_led_task_tid);
+		leds_set_pixels(leds, 0, leds->num_leds, leds->global_color,
+				leds->global_brightness, block);
+		IF_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL, (k_thread_suspend(app_led_task_tid);))
 		break;
 	default:
-		k_thread_resume(app_led_task_tid);
+		IF_ENABLED(CONFIG_LED_SUSPEND_TASK_MANUAL, (k_thread_resume(app_led_task_tid);))
 		break;
 	}
 }
@@ -444,7 +505,7 @@ void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block)
 /* Return to last mode */
 void app_led_last_mode(app_led_data_t *leds, k_timeout_t block)
 {
-	uint32_t now = k_uptime_get();
+	int64_t now = k_uptime_get();
 	struct app_led_state *led;
 	LedMode last = leds->last_mode;
 
@@ -548,7 +609,7 @@ int app_led_off(app_led_data_t *leds, k_timeout_t block)
 int app_led_blink_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, uint32_t on_period_ms,
 			uint32_t off_period_ms, bool state_override, k_timeout_t block)
 {
-	uint32_t now = k_uptime_get();
+	int64_t now = k_uptime_get();
 	bool change_mode = false;
 	struct app_led_state *led;
 
@@ -631,7 +692,9 @@ int app_led_blink_sync(app_led_data_t *leds, rgb_color_t c, k_timeout_t block)
 	return err;
 }
 
-int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness, uint32_t fade_time_ms, k_timeout_t block) {
+int app_led_fade_to(app_led_data_t *leds, rgb_color_t c, uint8_t end_brightness,
+		    uint32_t fade_time_ms, k_timeout_t block)
+{
 	app_led_fade_sequence[0].color = leds->global_color;
 	app_led_fade_sequence[0].start_brightness = leds->global_brightness;
 	app_led_fade_sequence[0].end_brightness = 0;
@@ -747,8 +810,8 @@ void app_led_breathe(void *const pleds, const void *const pstep, k_timeout_t blo
 		toggle = !toggle;
 	}
 
-	_app_led_set_pixels(leds, 0, leds->num_leds, data->color,
-			    toggle ? (leds->global_brightness - data->count) : data->count, block);
+	leds_set_pixels(leds, 0, leds->num_leds, data->color,
+			toggle ? (leds->global_brightness - data->count) : data->count, block);
 	data->count *= 2;
 }
 
@@ -765,8 +828,7 @@ void app_led_chase(void *const pleds, const void *const pstep, k_timeout_t block
 		if (data->count > leds->num_leds)
 			data->count = 0;
 
-		_app_led_set_pixel(leds, data->count++, data->color, leds->global_brightness,
-				   block);
+		leds_set_pixel(leds, data->count++, data->color, leds->global_brightness, block);
 		data->last_tick = k_uptime_get();
 	}
 }
@@ -781,8 +843,8 @@ void app_led_fade_blink(void *const pleds, const void *const pstep, k_timeout_t 
 	app_led_fade_color(leds, 16, RGBHEX(Black), block);
 
 	if (k_uptime_get() - data->last_tick >= (step->time_in_10ms * 10) / 2) {
-		_app_led_set_pixels(leds, 0, leds->num_leds, data->color, leds->global_brightness,
-				    block);
+		leds_set_pixels(leds, 0, leds->num_leds, data->color, leds->global_brightness,
+				block);
 		data->last_tick = k_uptime_get();
 	}
 }
@@ -796,13 +858,13 @@ void app_led_half_blink(void *const pleds, const void *const pstep, k_timeout_t 
 
 	if (data->count) {
 		app_led_fade_color(leds, 16, RGBHEX(Black), block);
-		_app_led_set_pixels(leds, 0, leds->num_leds / 2, data->color, leds->global_brightness,
-				    block);
+		leds_set_pixels(leds, 0, leds->num_leds / 2, data->color, leds->global_brightness,
+				block);
 	}
 
 	if (k_uptime_get() - data->last_tick >= (step->time_in_10ms * 10) / 2) {
-		_app_led_set_pixels(leds, 0, leds->num_leds, data->color, leds->global_brightness,
-				    block);
+		leds_set_pixels(leds, 0, leds->num_leds, data->color, leds->global_brightness,
+				block);
 		if (data->count == 0) {
 			data->count = 1;
 		} else {
@@ -827,8 +889,8 @@ void app_led_sine(void *const pleds, const void *const pstep, k_timeout_t block)
 			toggle = !toggle;
 		}
 
-		_app_led_set_pixel(leds, toggle ? (leds->num_leds - ++data->count) : data->count++,
-				   data->color, leds->global_brightness, block);
+		leds_set_pixel(leds, toggle ? (leds->num_leds - ++data->count) : data->count++,
+			       data->color, leds->global_brightness, block);
 		data->last_tick = k_uptime_get();
 	}
 }
@@ -873,8 +935,8 @@ static uint32_t app_led_show_sequence_step(app_led_data_t *leds, uint8_t step_nu
 			if (step->fnc != NULL) {
 				step->fnc(leds, step, block);
 			} else {
-				_app_led_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color,
-						    leds->sequence_data.brightness, block);
+				leds_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color,
+						leds->sequence_data.brightness, block);
 			}
 			ret = 10 * step->time_in_10ms;
 		}
@@ -887,7 +949,7 @@ static uint32_t app_led_show_sequence_step(app_led_data_t *leds, uint8_t step_nu
 
 static void app_led_update_sequence(app_led_data_t *leds, k_timeout_t block)
 {
-	uint32_t now = k_uptime_get();
+	int64_t now = k_uptime_get();
 
 	// if ready for next step in sequence
 	if (now > leds->time_sequence_next) {
@@ -947,8 +1009,8 @@ static void app_led_update_sequence(app_led_data_t *leds, k_timeout_t block)
 				} else {
 					leds->sequence_data.brightness = step->end_brightness;
 				}
-				_app_led_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color,
-						    leds->sequence_data.brightness, block);
+				leds_set_pixels(leds, 0, leds->num_leds, leds->sequence_data.color,
+						leds->sequence_data.brightness, block);
 			}
 
 			k_mutex_unlock(&leds->mutex);
@@ -958,7 +1020,7 @@ static void app_led_update_sequence(app_led_data_t *leds, k_timeout_t block)
 
 static void app_led_update_blink_mode(app_led_data_t *leds, k_timeout_t block)
 {
-	uint32_t now = k_uptime_get();
+	int64_t now = k_uptime_get();
 	bool change_mode = true;
 	struct app_led_state *led;
 
@@ -979,7 +1041,13 @@ static void app_led_update_blink_mode(app_led_data_t *leds, k_timeout_t block)
 		app_led_last_mode(leds, block);
 }
 
-// should be called at least once per 1 ms (systick)
+/**
+ * @brief Update App LED state machine
+ *
+ * This function is called from the LED task thread to update the LED state machine and set the
+ * LEDs. If not using the LED task, this function can be called from a App thread to update the
+ * LEDs at a regular interval.
+ */
 void app_led_update(app_led_data_t *leds)
 {
 	switch (leds->mode) {
@@ -987,13 +1055,13 @@ void app_led_update(app_led_data_t *leds)
 		// if manual mode, just set the colour - will be suspended if
 		// CONFIG_LED_SUSPEND_TASK_MANUAL is set otherwise update ensures LED strip
 		// is updated even if disconnected
-		_app_led_set_pixels(leds, 0, leds->num_leds, leds->global_color,
-				    leds->global_brightness, K_FOREVER);
+		leds_set_pixels(leds, 0, leds->num_leds, leds->global_color,
+				leds->global_brightness, K_FOREVER);
 		break;
 	case Rainbow:
 		leds->hue++;
-		_app_led_set_pixels(leds, 0, leds->num_leds, app_led_hsv_to_rgb(leds->hue, 255, 255),
-				    leds->global_brightness, K_FOREVER);
+		leds_set_pixels(leds, 0, leds->num_leds, app_led_hsv_to_rgb(leds->hue, 255, 255),
+				leds->global_brightness, K_FOREVER);
 		break;
 	case Blink:
 		app_led_update_blink_mode(leds, K_FOREVER);
@@ -1002,21 +1070,22 @@ void app_led_update(app_led_data_t *leds)
 		app_led_update_sequence(leds, K_FOREVER);
 		break;
 	case Error:
-		_app_led_set_pixels(leds, 0, leds->num_leds, RGBHEX(Red), leds->global_brightness,
-				    K_FOREVER);
+		leds_set_pixels(leds, 0, leds->num_leds, RGBHEX(Red), leds->global_brightness,
+				K_FOREVER);
 		break;
 	case Off:
 	default:
-		_app_led_set_pixels(leds, 0, leds->num_leds, RGBHEX(Black), leds->global_brightness,
-				    K_FOREVER);
+		leds_set_pixels(leds, 0, leds->num_leds, RGBHEX(Black), leds->global_brightness,
+				K_FOREVER);
 		break;
 	}
 }
 
-void app_led_task_worker(void *p1, void *p2, void *p3)
+#if IS_ENABLED(CONFIG_APP_LED_INTERNAL_THREAD)
+static void app_led_task_worker(void *p1, void *p2, void *p3)
 {
-	int64_t last = k_uptime_get();
 	__ASSERT(p1 != NULL, "LED data pointer is NULL");
+	int64_t last = k_uptime_get();
 	app_led_data_t *leds = (app_led_data_t *)p1;
 
 	// this whole led system would probably be better as a worker with queue of
@@ -1025,26 +1094,44 @@ void app_led_task_worker(void *p1, void *p2, void *p3)
 	while (1) {
 		last = k_uptime_get();
 		app_led_update(leds);
-		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD - (k_uptime_delta(&last) % 10)));
+		k_sleep(K_MSEC(CONFIG_APP_LED_UPDATE_PERIOD - (k_uptime_delta(&last))));
 	}
 }
+#endif
 
-/*
- * The peripheral initialization is done by the LED/LED_PWM driver
- * with a post kernel init hook. We just need to start the task.
+/**
+ * @brief Initialize the App LED module
+ *
+ * The peripheral initialization is done by the LED/LED_PWM/LED_STRIP driver
+ * with a post kernel init hook. We just need to check ready and start the task thread if using.
  */
-int app_led_init(const app_led_data_t *const leds)
+int app_led_init(app_led_data_t *const leds)
 {
 	if (!device_is_ready(leds->app_led)) {
 		LOG_ERR("Device %s is not ready", leds->app_led->name);
 		return -ENODEV;
 	}
 
-	app_led_task_tid = k_thread_create(
-		&app_led_task_thread, app_led_task_stack, K_THREAD_STACK_SIZEOF(app_led_task_stack),
-		app_led_task_worker, (void*) leds, NULL, NULL, CONFIG_APP_LED_THREAD_PRIO, 0, K_NO_WAIT);
+	switch (leds->hw_type) {
+#if IS_ENABLED(CONFIG_LED_STRIP)
+	case APP_LED_TYPE_STRIP:
+		__ASSERT(leds->pixels != NULL, "LED strip data pointer is NULL");
+		k_work_init(&leds->work, leds_strip_work);
+		break;
+#endif
+	default:
+		break;
+	}
+
+#if IS_ENABLED(CONFIG_APP_LED_INTERNAL_THREAD)
+	app_led_task_tid =
+		k_thread_create(&app_led_task_thread, app_led_task_stack,
+				K_THREAD_STACK_SIZEOF(app_led_task_stack), app_led_task_worker,
+				(void *)leds, NULL, NULL, CONFIG_APP_LED_THREAD_PRIO, 0, K_NO_WAIT);
+	k_thread_name_set(&app_led_task_thread, "app_led");
 
 	LOG_INF("LED task started");
+#endif
 
 	return 0;
 }

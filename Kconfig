@@ -4,56 +4,82 @@ menuconfig APP_LED
 
 if APP_LED
 
-config APP_LED_LOG_LEVEL
-	int "Log level for App LED module"
-	default 3
-	help
-	  0: No logs
-	  1: Error logs only
-	  2: Warning logs
-	  3: Info logs
-	  4: Debug logs
+	config APP_LED_LOG_LEVEL
+		int "Log level for App LED module"
+		default 3
+		help
+		0: No logs
+		1: Error logs only
+		2: Warning logs
+		3: Info logs
+		4: Debug logs
 
-choice
-	prompt "LED mode"
-	default APP_LED_PIN_RGB
-	help
-	  Set GPIO/PWM LED pin configuration
+	choice
+		prompt "LED mode"
+		default APP_LED_PIN_RGB
+		depends on LED || LED_STRIP
+		help
+		Set GPIO/PWM LED pin configuration
 
-config APP_LED_PIN_INDIVIDUAL
-	bool "Individual pin mode"
-	help
-	  Discrete LEDs on each GPIO.
+	config APP_LED_PIN_INDIVIDUAL
+		bool "Individual pin mode"
+		help
+		Discrete LEDs on each GPIO.
 
-config APP_LED_PIN_RGB
-	bool "RGB pin mode"
-	help
-	  RGB LED connected to 3 GPIO pins.
+	config APP_LED_PIN_RGB
+		bool "RGB pin mode"
+		help
+		RGB LED connected to 3 GPIO pins.
 
-endchoice
+	endchoice
 
-config APP_LED_SUSPEND_TASK_MANUAL
-	bool "Suspend LED task on manual mode"
-	default y
-	help
-	  If enabled, the LED task is suspended when the node is in manual mode.
-	  If disabled, the LED task is running in manual mode. If strip is unreliable, may help as will be updated at 100 Hz even if no change in state.
+	choice
+		prompt "Grayscale mode"
+		default APP_LED_GRAYSCALE_WEIGHTED
+		# depends on APP_LED_PIN_INDIVIDUAL
+		help
+		Set the grayscale mode for non-RGB LEDs.
 
-config APP_LED_THREAD_PRIO
-	int "LED thread priority"
-	default 1
+	config APP_LED_GRAYSCALE_WEIGHTED
+		bool "Weighted grayscale"
 
-config APP_LED_THREAD_STACK_SIZE
-	int "LED thread stack size"
-	default 512
-	help
-	  Set the stack size for the LED thread. The default is 1024 bytes.
-	  This may need to be increased if the LED application is using a lot of memory.
+	config APP_LED_GRAYSCALE_RGB_SUM
+		bool "RGB sum grayscale"
 
-config APP_LED_UPDATE_PERIOD
-	int "LED update period (ms)"
-	default 10
-	help
-	  Set the update period for the LED thread.
+	config APP_LED_GRAYSCALE_ONOFF
+		bool "On/Off grayscale"
+
+	endchoice
+
+	config APP_LED_UPDATE_PERIOD
+		int "LED update period (ms)"
+		default 10
+		help
+		Set the update period for the LED thread.
+
+	menuconfig APP_LED_INTERNAL_THREAD
+		bool "App LED internal thread"
+		default y
+
+	if APP_LED_INTERNAL_THREAD
+
+		config APP_LED_SUSPEND_TASK_MANUAL
+			bool "Suspend LED task on manual mode"
+			default y
+			help
+			If enabled, the LED task is suspended when the node is in manual mode since there is no need to update the LED state in the background.
+			If using LED_STRIP, if might be preferable to disable this so that the strip is continually refreshed.
+
+		config APP_LED_THREAD_PRIO
+			int "LED thread priority"
+			default 1
+
+		config APP_LED_THREAD_STACK_SIZE
+			int "LED thread stack size"
+			default 512
+			help
+			Set the stack size for the LED thread.
+
+	endif
 
 endif

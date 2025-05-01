@@ -1,6 +1,6 @@
 #include <zephyr/kernel.h>
 
-#include "led.h"
+#include <app_led/led.h>
 
 const app_led_sequence_step_t app_led_test_sequence[] = {
 	{.fnc = NULL,
