@@ -15,25 +15,6 @@ if APP_LED
 		4: Debug logs
 
 	choice
-		prompt "LED mode"
-		default APP_LED_PIN_RGB
-		depends on LED || LED_STRIP
-		help
-		Set GPIO/PWM LED pin configuration
-
-	config APP_LED_PIN_INDIVIDUAL
-		bool "Individual pin mode"
-		help
-		Discrete LEDs on each GPIO.
-
-	config APP_LED_PIN_RGB
-		bool "RGB pin mode"
-		help
-		RGB LED connected to 3 GPIO pins.
-
-	endchoice
-
-	choice
 		prompt "Grayscale mode"
 		default APP_LED_GRAYSCALE_WEIGHTED
 		help

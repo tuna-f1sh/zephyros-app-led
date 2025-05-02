@@ -8,7 +8,8 @@ I have ported this from projects into a module in an attempt to make it more gen
 
 ## TODO
 
-- [ ] Ability to use GPIO, PWM and LED strip drivers independently but also together with a common API but passed `app_led_data_t` struct for each.
-- [ ] KConfig options to control priority, stack size, etc.
-- [ ] Example code.
-- [ ] `twister` tests.
+- [x] Ability to use GPIO, PWM and LED strip drivers independently but also together with a common API but passed `app_led_data_t` struct for each.
+- [x] ~~KConfig options to control priority, stack size, etc.~~ Now uses workqueue so system workqueue can configure this. Option to control update with `CONFIG_APP_LED_USE_WORKQUEUE=n`.
+- [x] Samples.
+- [ ] Tidy internal LED HW abstraction. Perhaps HW update callback in `app_led_data_t`?
+- [ ] Test suite with ztest using native_sim or qemu.
