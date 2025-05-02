@@ -28,4 +28,4 @@ jobs:
           toolchains: arm-zephyr-eabi
 
       - name: Twister tests
-        run: west twister -T module -v --inline-logs
+        run: west twister -T module -v --inline-logs --integration

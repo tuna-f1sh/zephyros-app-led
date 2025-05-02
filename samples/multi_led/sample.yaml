@@ -1,0 +1,10 @@
+sample:
+  name: multi_led
+common:
+  tags: LED
+  build_only: true
+  integration_platforms:
+    - nucleo_l432kc
+tests:
+  samples.multi_led:
+    filter: dt_compat_enabled("gpio-leds")

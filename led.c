@@ -49,8 +49,6 @@ static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t e
 		c.g = (uint8_t)((uint16_t)c.g * brightness / 255);
 		c.b = (uint8_t)((uint16_t)c.b * brightness / 255);
 
-		leds->_color = c;
-
 		c_rgb = (struct led_rgb){
 			.r = c.r,
 			.g = c.g,
@@ -63,16 +61,20 @@ static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t e
 			leds->state[i]._color = c;
 		}
 
+#if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 		/* schedule the work to update the LED strip if not already pending */
 		if (!k_work_is_pending((struct k_work *)&leds->dwork)) {
 			k_work_schedule(&leds->dwork, K_NO_WAIT);
 		}
-
-		return 0;
+#endif
 	} else {
 		LOG_ERR("LED index out of range");
 		return -EINVAL;
 	}
+
+	leds->_color = c;
+
+	return 0;
 }
 #endif
 
@@ -150,7 +152,6 @@ static int leds_set_pin_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c, u
 	if (leds->is_rgb) {
 		/* hw base index is *3 */
 		if ((i * 3 + 2) < leds->hw_num_leds) {
-			leds->state[i]._color = c;
 			err = leds_set_brightness(leds, i, c.r, block);
 			if (!err)
 				err = leds_set_brightness(leds, i + 1, c.g, block);
@@ -166,7 +167,6 @@ static int leds_set_pin_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c, u
 		}
 	} else {
 		if (i < leds->hw_num_leds) {
-			leds->state[i]._color = c;
 #if IS_ENABLED(CONFIG_APP_LED_GRAYSCALE_WEIGHTED)
 			uint8_t grayscale_brightness =
 				(uint8_t)(0.299 * c.r + 0.587 * c.g + 0.114 * c.b);
@@ -186,6 +186,8 @@ static int leds_set_pin_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c, u
 		}
 	}
 
+	leds->state[i]._color = c;
+
 	return 0;
 }
 
@@ -193,14 +195,12 @@ static int leds_set_pin_pixels(app_led_data_t *leds, uint16_t start, uint16_t en
 			       uint8_t brightness, k_timeout_t block)
 {
 	int err;
+
 	if (start < leds->num_leds && end <= leds->num_leds) {
 		// scale
 		c.r = (uint8_t)((uint16_t)c.r * brightness / 255);
 		c.g = (uint8_t)((uint16_t)c.g * brightness / 255);
 		c.b = (uint8_t)((uint16_t)c.b * brightness / 255);
-		// TODO this is legacy and not representative of the actual color if changing sector
-		// it's just used for toggle whole strip
-		leds->_color = c;
 
 		for (int i = start; i < end; i++) {
 			err = leds_set_pin_pixel(leds, i, c, brightness, block);
@@ -213,6 +213,10 @@ static int leds_set_pin_pixels(app_led_data_t *leds, uint16_t start, uint16_t en
 		LOG_ERR("LED index out of range");
 		return -EINVAL;
 	}
+
+	// TODO this is legacy and not representative of the actual color if changing sector
+	// it's just used for toggle whole strip
+	leds->_color = c;
 
 	return 0;
 }
@@ -1088,7 +1092,9 @@ static void app_led_work_handler(struct k_work *work)
 
 	/* Update strip LEDs here if using LED_STRIP driver */
 #if IS_ENABLED(CONFIG_LED_STRIP)
-	leds_strip_update(leds);
+	if (leds->hw_type == APP_LED_TYPE_STRIP) {
+		leds_strip_update(leds);
+	}
 #endif
 
 	/* Reschedule the work if not in Manual or Off mode */

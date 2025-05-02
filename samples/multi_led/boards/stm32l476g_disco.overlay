@@ -1,17 +1,15 @@
-#include <zephyr/dt-bindings/led/led.h>
-
 / {
-	leds: leds {
+	leds {
 		compatible = "gpio-leds";
-		red_led: led_1 {
+		led0: rled {
 			gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;
 			label = "Red LED";
 		};
-		green_led: led_0 {
-			gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;
-			label = "User LD3";
+		led1: gled {
+			gpios = <&gpioa 3 GPIO_ACTIVE_LOW>;
+			label = "Green LED";
 		};
-		blue_led: led_2 {
+		led2: bled {
 			gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
 			label = "Blue LED";
 		};
@@ -53,7 +51,7 @@
 
 &spi1 {
 	status = "okay";
-	pinctrl-0 = <&spi1_nss_pa15 &spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>;
+	pinctrl-0 = <&spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>;
 
 	led_strip: ws2812@0 {
 		compatible = "worldsemi,ws2812-spi";
@@ -64,7 +62,7 @@
 		frame-format = <32768>; /* SPI_FRAME_FORMAT_TI */
 
 		/* WS2812 */
-		chain-length = <6>; /* arbitrary; change at will */
+		chain-length = <16>; /* arbitrary; change at will */
 		reset-delay = <50>; /* default 8 us but 50 us in datasheet and helps prevent flicker */
 		spi-one-frame = <0x70>;
 		spi-zero-frame = <0x40>;

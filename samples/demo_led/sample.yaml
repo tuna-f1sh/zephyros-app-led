@@ -1,42 +1,25 @@
 sample:
   name: demo_led
 common:
+  tags: LED
   build_only: true
   integration_platforms:
     - nucleo_l432kc
 tests:
-  demo_led.gpio.nucleo_l432kc:
-    platform_allow:
-      - nucleo_l432kc
+  demo_led.gpio:
+    filter: dt_compat_enabled("gpio-leds")
 
   demo_led.no_workqueue:
-    platform_allow:
-      - nucleo_l432kc
+    filter: dt_compat_enabled("gpio-leds")
     extra_args:
       - CONFIG_APP_LED_USE_WORKQUEUE=n
 
-  # demo_led.gpio.generic:
-  #   filter: dt_compat_enabled("gpio-leds")
-
-  demo_led.pwm.nucleo_l432kc:
-    platform_allow:
-      - nucleo_l432kc
+  demo_led.pwm:
+    filter: dt_compat_enabled("pwm-leds")
     extra_overlay_confs:
       - prj_pwm.conf
-    extra_dtc_overlay_files:
-      - boards/nucleo_l432kc_pwm.overlay
 
-  # demo_led.pwm.generic:
-  #   depends_on:
-  #     - pwm
-  #   filter: dt_compat_enabled("pwm-leds")
-  #   extra_overlay_confs:
-  #     - prj_pwm.conf
-
-  demo_led.ws2812.nucleo_l432kc:
-    platform_allow:
-      - nucleo_l432kc
+  demo_led.ws2812:
+    filter: dt_alias_exists("led-strip")
     extra_overlay_confs:
       - prj_ws2812.conf
-    extra_dtc_overlay_files:
-      - boards/nucleo_l432kc_ws2812.overlay
