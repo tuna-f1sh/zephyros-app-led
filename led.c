@@ -62,7 +62,12 @@ static int led_set_strip_pixels(app_led_data_t *leds, uint16_t start, uint16_t e
 		}
 
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
-		/* schedule the work to update the LED strip if not already pending */
+		/* Schedule the work to update the LED strip if not already pending
+		 * function is can be call from workqueue context but pending still true until return so
+		 * this doesn't end up a loop
+		 *
+		 * Required if manual mode or off to schedule outside of potential ISR context
+		 */
 		if (!k_work_is_pending((struct k_work *)&leds->dwork)) {
 			k_work_schedule(&leds->dwork, K_NO_WAIT);
 		}
@@ -1124,7 +1129,7 @@ int app_led_init(app_led_data_t *const leds)
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 	/* Init delayed work and call first time to schedule the work */
 	k_work_init_delayable(&leds->dwork, app_led_work_handler);
-	app_led_work_handler((struct k_work *)&leds->dwork);
+	k_work_schedule(&leds->dwork, K_NO_WAIT);
 #endif
 
 	LOG_INF("App LED %s initialized", leds->app_led->name);

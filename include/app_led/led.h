@@ -259,11 +259,7 @@ typedef struct {
 	int8_t sequence_repeat_count;		 // -1 to repeat forever
 	app_led_sequence_data_t sequence_data;	 // data for sequence being run
 	app_led_set_pixels_func_t set_pixels;	 // function to set pixels
-#if IS_ENABLED(CONFIG_LED_STRIP)
-	struct led_rgb *const pixels; // pixel buffer for RGB LED strip, NULL if not used
-#else
 	void *const pixels; // pixel buffer for RGB LED strip, NULL if not used
-#endif
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 	struct k_work_delayable dwork; // delayed work for state machine update
 #endif
@@ -320,17 +316,17 @@ typedef struct {
 	}
 
 /* Helper to define a static discrete App LED chain of GPIO or PWM LEDs */
-#define APP_LED_STATIC_IDV_DEFINE(_name, _node_id, _num_hw_leds)                                   \
+#define APP_LED_STATIC_IDV_DEFINE(_name, _node_id)                                                 \
 	BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) ||                                    \
 			     DT_NODE_HAS_COMPAT(_node_id, pwm_leds),                               \
 		     #_node_id "must be gpio_leds or pwm_leds");                                   \
-	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, 0)
+	APP_LED_STATIC_DEFINE(_name, _node_id, DT_CHILD_NUM(_node_id), 0)
 /* Helper to define a static RGB App LED using either GPIO or PWM App LEDs */
-#define APP_LED_STATIC_RGB_DEFINE(_name, _node_id, _num_hw_leds)                                   \
+#define APP_LED_STATIC_RGB_DEFINE(_name, _node_id)                                                 \
 	BUILD_ASSERT(DT_NODE_HAS_COMPAT(_node_id, gpio_leds) ||                                    \
 			     DT_NODE_HAS_COMPAT(_node_id, pwm_leds),                               \
 		     #_node_id "must be gpio_leds or pwm_leds");                                   \
-	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, 1)
+	APP_LED_STATIC_DEFINE(_name, _node_id, DT_CHILD_NUM(_node_id), 1)
 /* Helper to define a static RGB App LED strip using the chain_length property for hw_num_leds */
 #define APP_LED_STATIC_STRIP_DEFINE(_name, _node_id)                                               \
 	APP_LED_STATIC_DEFINE(_name, _node_id, DT_PROP(_node_id, chain_length), 1)
