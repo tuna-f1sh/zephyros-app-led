@@ -292,7 +292,7 @@ typedef struct {
 	COND_CODE_1(DT_NODE_HAS_PROP(_node_id, chain_length),                                      \
 		    (static struct led_rgb _name##_pixel_buffer[(_num_hw_leds)] = {0};),           \
 		    (static void *const _name##_pixel_buffer = NULL;))                             \
-	static app_led_data_t _name = {                                                            \
+	app_led_data_t _name = {                                                            \
 		.mode = Manual,                                                                    \
 		.last_mode = Manual,                                                               \
 		.mutex = Z_MUTEX_INITIALIZER(_name.mutex),                                         \
