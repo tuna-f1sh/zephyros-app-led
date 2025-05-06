@@ -239,31 +239,39 @@ typedef int (*app_led_set_pixels_func_t)(void *leds, uint16_t start, uint16_t en
 
 /* Main struct for controllable app_led device */
 typedef struct {
-	LedMode mode;				 // current display mode
-	LedMode last_mode;			 // last mode before current to return
-	LedType hw_type;			 // tagged hardware type for any runtime checks
-	bool is_rgb;				 // true if RGB LED strip
-	struct k_mutex mutex;			 // mutex for mutli-thread access
-	const struct device *const app_led;	 // pointer to device tree node
-	uint8_t global_brightness;		 // current brightness
-	uint8_t hue;				 // global hue for rainbow
-	bool rainbow;				 // rainbow mode
-	const uint8_t hw_num_leds;		 // number of LEDs in DT prop
-	const uint8_t num_leds;			 // number of LEDs in sequence
-	rgb_color_t global_color;		 // user colour for manual mode, will revert to this
-	rgb_color_t _color;			 // current global color
-	struct app_led_state *const state;	 // state of each led
-	uint8_t sequence_step;			 // sequence step index
+	LedMode mode;			    // current display mode
+	LedMode last_mode;		    // last mode before current to return
+	LedType hw_type;		    // tagged hardware type for any runtime checks
+	bool is_rgb;			    // true if RGB LED strip
+	uint8_t offset;			    // start offset to apply to device tree node phandle
+	struct k_mutex mutex;		    // mutex for mutli-thread access
+	const struct device *const app_led; // pointer to device tree node
+	uint8_t global_brightness;	    // current brightness
+	uint8_t hue;			    // global hue for rainbow
+	bool rainbow;			    // rainbow mode
+	const uint8_t hw_num_leds;	    // number of LEDs in DT prop
+	const uint8_t num_leds;		    // number of LEDs in sequence
+	rgb_color_t global_color;	    // user colour for manual mode, will revert to this
+	rgb_color_t _color;		    // current global color
+	struct app_led_state *const state;  // state of each led
+	uint8_t sequence_step;		    // sequence step index
 	const app_led_sequence_step_t *sequence; // current sequence frame
 	uint32_t time_sequence_next;		 // tick to next
 	int8_t sequence_repeat_count;		 // -1 to repeat forever
 	app_led_sequence_data_t sequence_data;	 // data for sequence being run
 	app_led_set_pixels_func_t set_pixels;	 // function to set pixels
-	void *const pixels; // pixel buffer for RGB LED strip, NULL if not used
+	void *const pixels;			 // pixel buffer for RGB LED strip, NULL if not used
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 	struct k_work_delayable dwork; // delayed work for state machine update
 #endif
 } app_led_data_t;
+
+/* Helper to calculate the number of logical LEDs in a chain; if it's not a strip LED and is RGB,
+ * divide by 3
+ */
+#define APP_LED_CALC_NUM_LOGICAL_LEDS(_node_id, _num_leds, _is_rgb)                                \
+	COND_CODE_1(DT_NODE_HAS_PROP(_node_id, chain_length), (_num_leds),                         \
+		    ((_is_rgb) ? (_num_leds) / 3U : _num_leds))
 
 /**
  * @brief Statically define and initialize an app_led_data instance with type info.
@@ -282,25 +290,21 @@ typedef struct {
 			 COND_CODE_1(DT_NODE_HAS_COMPAT(_node_id, gpio_leds), (APP_LED_TYPE_GPIO), \
 				     (/* Fallback to strip type */                                 \
 				      APP_LED_TYPE_STRIP))));                                      \
-	/* If pin type and RGB divide 3 hardware count */                                          \
-	static const uint8_t _name##_num_logical_leds =                                            \
-		(_is_rgb) && (((_name##_auto_hw_type) == APP_LED_TYPE_PWM) ||                      \
-			      ((_name##_auto_hw_type) == APP_LED_TYPE_GPIO))                       \
-			? ((_num_hw_leds) / 3U)                                                    \
-			: (_num_hw_leds);                                                          \
-	static struct app_led_state _name##_state_array[(_num_hw_leds)] = {0};                     \
+	static struct app_led_state _name##_state_array[APP_LED_CALC_NUM_LOGICAL_LEDS(             \
+		_node_id, _num_hw_leds, _is_rgb)] = {0};                                           \
 	COND_CODE_1(DT_NODE_HAS_PROP(_node_id, chain_length),                                      \
 		    (static struct led_rgb _name##_pixel_buffer[(_num_hw_leds)] = {0};),           \
 		    (static void *const _name##_pixel_buffer = NULL;))                             \
-	app_led_data_t _name = {                                                            \
+	app_led_data_t _name = {                                                                   \
 		.mode = Manual,                                                                    \
 		.last_mode = Manual,                                                               \
 		.mutex = Z_MUTEX_INITIALIZER(_name.mutex),                                         \
 		.app_led = DEVICE_DT_GET(_node_id),                                                \
 		.hw_type = (_name##_auto_hw_type),                                                 \
 		.is_rgb = (bool)(_is_rgb),                                                         \
+		.offset = 0,                                                                       \
 		.hw_num_leds = (_num_hw_leds),                                                     \
-		.num_leds = (_name##_num_logical_leds),                                            \
+		.num_leds = APP_LED_CALC_NUM_LOGICAL_LEDS(_node_id, _num_hw_leds, _is_rgb),        \
 		.global_brightness = 0xFF,                                                         \
 		.global_color = {.r = 0, .g = 0, .b = 0},                                          \
 		._color = {.r = 0, .g = 0, .b = 0},                                                \
