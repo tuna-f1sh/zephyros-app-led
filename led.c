@@ -1121,10 +1121,12 @@ static void app_led_work_handler(struct k_work *work)
  */
 int app_led_init(app_led_data_t *const leds)
 {
+#if !(IS_ENABLED(CONFIG_GPIO_EMUL) && IS_ENABLED(CONFIG_TEST))
 	if (!device_is_ready(leds->app_led)) {
 		LOG_ERR("Device %s is not ready", leds->app_led->name);
 		return -ENODEV;
 	}
+#endif
 
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 	/* Init delayed work and call first time to schedule the work */

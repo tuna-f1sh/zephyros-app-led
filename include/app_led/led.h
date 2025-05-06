@@ -381,11 +381,12 @@ void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_wait_blink(app_led_data_t *leds, k_timeout_t wait_ms);
 void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block);
-int app_led_init(app_led_data_t *const leds);
 rgb_color_t app_led_hue_to_rgb(uint8_t hue);
 rgb_color_t app_led_hsv_to_rgb(uint8_t hue, uint8_t sat, uint8_t value);
 int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
 int app_led_set_global_brightness(app_led_data_t *leds, uint8_t brightness, k_timeout_t block);
+int app_led_init(app_led_data_t *const leds);
+void app_led_update(app_led_data_t *leds);
 
 /* Helper to indicate Rx/Tx activity for example */
 #define app_led_indicate_act(_l, _c) app_led_blink(_l, RGBHEX(_c), 20, 30, false, K_NO_WAIT);

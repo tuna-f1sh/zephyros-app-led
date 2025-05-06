@@ -1,0 +1,40 @@
+/ {
+	aliases {
+		gpio-leds = &test_gpio_led;
+		rgb-gpio-leds = &test_gpio_rgb;
+		gpio-emulator = &test_gpio;
+	};
+
+	test {
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		test_gpio: gpio@deadbeef {
+			compatible = "vnd,gpio";
+			gpio-controller;
+			reg = <0xdeadbeef 0x1000>;
+			#gpio-cells = <0x2>;
+			status = "okay";
+		};
+
+		test_gpio_rgb: rgb-leds {
+			compatible = "gpio-leds";
+			test_gpio_led0: test_gpio_led_0 {
+				gpios = <&test_gpio 0 0>;
+			};
+			test_gpio_led1: test_gpio_led_1 {
+				gpios = <&test_gpio 1 0>;
+			};
+			test_gpio_led2: test_gpio_led_2 {
+				gpios = <&test_gpio 2 0>;
+			};
+		};
+
+		test_gpio_led: gpio-leds {
+			compatible = "gpio-leds";
+			test_gpio_led3: test_gpio_led_3 {
+				gpios = <&test_gpio 3 0>;
+			};
+		};
+	};
+};
