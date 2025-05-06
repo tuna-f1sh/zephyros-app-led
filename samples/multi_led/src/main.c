@@ -1,8 +1,8 @@
 /**
  * @file main.c
- * @brief App LED demo application
+ * @brief App LED mutli LED demo
  *
- * Demos main app_led API with a single RGB LED strip or GPIO/PWM LEDs
+ * Demos using different LED types in the same application
  *
  */
 #include <zephyr/device.h>

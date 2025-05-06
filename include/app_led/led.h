@@ -404,6 +404,7 @@ extern const app_led_sequence_step_t app_led_chase_sequence[];
 extern const app_led_sequence_step_t app_led_fade_blink_sequence[];
 extern const app_led_sequence_step_t app_led_half_blink_sequence[];
 extern const app_led_sequence_step_t app_led_sine_sequence[];
+extern const app_led_sequence_step_t app_led_breathe_sequence[];
 extern const app_led_sequence_step_t *app_led_sequences[];
 extern const uint8_t app_led_sequence_lengths[];
 void app_led_seq_fnc(void *const leds, const void *const step, k_timeout_t block);
