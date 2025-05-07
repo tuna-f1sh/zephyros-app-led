@@ -90,6 +90,7 @@ static int leds_set_pwm_brightness(app_led_data_t *leds, uint8_t i, uint8_t valu
 	const struct app_led_pwm_config *config = leds->app_led->config;
 	const struct pwm_dt_spec *dt_led;
 	int err;
+	i += leds->offset;
 
 	if (i >= config->num_leds || value > 255) {
 		return -EINVAL;
@@ -114,6 +115,7 @@ static int leds_set_gpio_brightness(app_led_data_t *leds, uint8_t i, uint8_t val
 	const struct led_gpio_config *config = leds->app_led->config;
 	const struct gpio_dt_spec *led_gpio;
 	int err;
+	i += leds->offset;
 
 	if ((i >= config->num_leds) || (value > 255)) {
 		return -EINVAL;

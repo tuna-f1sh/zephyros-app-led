@@ -1,8 +1,11 @@
+#include <zephyr/dt-bindings/led/led.h>
+
 / {
 	aliases {
 		gpio-leds = &test_gpio_led;
 		rgb-gpio-leds = &test_gpio_rgb;
 		gpio-emulator = &test_gpio;
+		led-strip = &led_strip;
 	};
 
 	test {
@@ -34,6 +37,29 @@
 			compatible = "gpio-leds";
 			test_gpio_led3: test_gpio_led_3 {
 				gpios = <&test_gpio 3 0>;
+			};
+		};
+
+		test_spi: spi@1 {
+			compatible = "zephyr,spi-emul-controller";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x1 0x2>;
+
+			led_strip: ws2812@0 {
+				compatible = "worldsemi,ws2812-spi";
+
+				/* SPI */
+				reg = <0x0>;
+				spi-max-frequency = <4000000>;
+				frame-format = <32768>; /* SPI_FRAME_FORMAT_TI */
+
+				/* WS2812 */
+				chain-length = <6>; /* arbitrary; change at will */
+				reset-delay = <50>; /* default 8 us but 50 us in datasheet and helps prevent flicker */
+				spi-one-frame = <0x70>;
+				spi-zero-frame = <0x40>;
+				color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
 			};
 		};
 	};

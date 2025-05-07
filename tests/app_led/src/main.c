@@ -5,6 +5,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/gpio/gpio_emul.h>
+#include <zephyr/drivers/led_strip.h>
 #include <zephyr/input/input.h>
 #include <string.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ LOG_MODULE_DECLARE(app_led_test, LOG_LEVEL_DBG);
 // Kconfig handles max array size now. Pass explicit HW LED count.
 APP_LED_STATIC_DEFINE(gpio_led_inst, GPIO_LED_NODE, 1, 0);     // 1 HW LED, not RGB
 APP_LED_STATIC_DEFINE(rgb_gpio_led_inst, RGB_GPIO_NODE, 3, 1); // 3 HW LEDs, is RGB
+// APP_LED_STATIC_STRIP_DEFINE(strip_inst, DT_ALIAS(led_strip));  // spi_emul strip
 
 // --- Test Fixture ---
 struct app_led_gpio_fixture {

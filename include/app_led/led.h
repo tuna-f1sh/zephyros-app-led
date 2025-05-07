@@ -333,7 +333,12 @@ typedef struct {
 	APP_LED_STATIC_DEFINE(_name, _node_id, DT_CHILD_NUM(_node_id), 1)
 /* Helper to define a static RGB App LED strip using the chain_length property for hw_num_leds */
 #define APP_LED_STATIC_STRIP_DEFINE(_name, _node_id)                                               \
+	BUILD_ASSERT(IS_ENABLED(CONFIG_LED_STRIP), "CONFIG_LED_STRIP must be enabled");            \
 	APP_LED_STATIC_DEFINE(_name, _node_id, DT_PROP(_node_id, chain_length), 1)
+/* Helper to define a App LED with a offset for node LED array */
+#define APP_LED_STATIC_OFFSET_DEFINE(_name, _node_id, _offset, _num_hw_leds, _is_rgb)              \
+	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, _is_rgb);                             \
+	_name.offset = _offset
 
 void app_led_run_sequence(app_led_data_t *leds, const app_led_sequence_step_t *sequence,
 			  int8_t num_repeat, k_timeout_t block);
