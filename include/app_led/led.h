@@ -243,7 +243,7 @@ typedef struct {
 	LedMode last_mode;		    // last mode before current to return
 	LedType hw_type;		    // tagged hardware type for any runtime checks
 	bool is_rgb;			    // true if RGB LED strip
-	uint8_t offset;			    // start offset to apply to device tree node phandle
+	const uint8_t offset;		    // start offset to apply to device tree node phandle
 	struct k_mutex mutex;		    // mutex for mutli-thread access
 	const struct device *const app_led; // pointer to device tree node
 	uint8_t global_brightness;	    // current brightness
@@ -340,13 +340,45 @@ typedef struct {
 	APP_LED_STATIC_DEFINE(_name, _node_id, _num_hw_leds, _is_rgb);                             \
 	_name.offset = _offset
 
+/* @brief Run a LED sequence
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param sequence Pointer to the sequence to run
+ * @param num_repeat Number of times to repeat the sequence, -1 for infinite
+ * @param block Timeout for blocking operation
+ */
 void app_led_run_sequence(app_led_data_t *leds, const app_led_sequence_step_t *sequence,
 			  int8_t num_repeat, k_timeout_t block);
 void app_led_sequence_clear(app_led_data_t *leds, k_timeout_t block);
+
+/* @brief Blink an LED at specific index
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param i Index of the LED to blink
+ * @param c Color to blink
+ * @param on_period_ms Time in milliseconds for the LED to be on
+ * @param off_period_ms Time in milliseconds for the LED to be off
+ * @param state_override Override the current state of the LED
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
 int app_led_blink_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, uint32_t on_period_ms,
 			uint32_t off_period_ms, bool state_override, k_timeout_t block);
+/* @brief Blink all LEDs
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param c Color to blink
+ * @param on_period_ms Time in milliseconds for the LED to be on
+ * @param off_period_ms Time in milliseconds for the LED to be off
+ * @param state_override Override the current state of the LED
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
 int app_led_blink(app_led_data_t *leds, rgb_color_t c, uint32_t on_period_ms,
 		  uint32_t off_period_ms, bool state_override, k_timeout_t block);
+int app_led_blink_sync_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout_t block);
+int app_led_blink_sync(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
+
 /* @breif Fade to a color over a period of time
  *
  * Maniplates app_led_fade_sequence to set the color and brightness
@@ -379,19 +411,91 @@ int app_led_fade_on(app_led_data_t *leds, uint32_t fade_time_ms, k_timeout_t blo
  * @return 0 on success, negative error code on failure
  */
 int app_led_fade_off(app_led_data_t *leds, uint32_t fade_time_ms, k_timeout_t block);
-int app_led_blink_sync_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout_t block);
-int app_led_blink_sync(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
-int app_led_set_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout_t block);
+
+/* @brief Wait for LEDs to be inactive
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param wait_ms Timeout to wait for LEDs to be inactive
+ */
 void app_led_wait_inactive(app_led_data_t *leds, k_timeout_t wait_ms);
+/* @brief Wait for LEDs to finish running sequence
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param wait_ms Timeout to wait for LEDs to finish running sequence
+ */
 void app_led_wait_sequence(app_led_data_t *leds, k_timeout_t wait_ms);
+/* @brief Wait for LEDs to finish blinking
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param wait_ms Timeout to wait for LEDs to finish blinking
+ */
 void app_led_wait_blink(app_led_data_t *leds, k_timeout_t wait_ms);
+
+/* @brief Set the LED mode
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param mode Mode to set
+ * @param block Timeout for blocking operation
+ */
 void app_led_set_mode(app_led_data_t *leds, LedMode mode, k_timeout_t block);
-rgb_color_t app_led_hue_to_rgb(uint8_t hue);
-rgb_color_t app_led_hsv_to_rgb(uint8_t hue, uint8_t sat, uint8_t value);
+
+/* @brief Set the color of a specific LED
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param i Index of the LED to set
+ * @param c Color to set
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
+int app_led_set_index(app_led_data_t *leds, uint16_t i, rgb_color_t c, k_timeout_t block);
+/* @brief Set the color of all LEDs
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param c Color to set
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
 int app_led_set_global_color(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
+/* @brief Set the brightness of all LEDs
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @param brightness Brightness to set
+ * @param block Timeout for blocking operation
+ * @return 0 on success, negative error code on failure
+ */
 int app_led_set_global_brightness(app_led_data_t *leds, uint8_t brightness, k_timeout_t block);
+/* @brief Initialize the passed leds
+ *
+ * Ensures dt node is valid and initialized then schedules work if enabled
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ * @return 0 on success, negative error code on failure
+ */
 int app_led_init(app_led_data_t *const leds);
+/* @brief Update state of the LEDs
+ *
+ * This function is called from the workqueue to update the state of the LEDs
+ * and run the state machine. It should be called periodically to ensure the
+ * LEDs are updated if CONFIG_APP_LED_USE_WORKQUEUE=n
+ *
+ * @param leds Pointer to the app_led_data_t structure
+ */
 void app_led_update(app_led_data_t *leds);
+
+/* @brief Convert hue to RGB color
+ *
+ * @param hue Hue value to convert
+ * @return RGB color value
+ */
+rgb_color_t app_led_hue_to_rgb(uint8_t hue);
+/* @brief Convert HSV to RGB color
+ *
+ * @param hue Hue value to convert
+ * @param sat Saturation value to convert
+ * @param value Value value to convert
+ * @return RGB color value
+ */
+rgb_color_t app_led_hsv_to_rgb(uint8_t hue, uint8_t sat, uint8_t value);
 
 /* Helper to indicate Rx/Tx activity for example */
 #define app_led_indicate_act(_l, _c) app_led_blink(_l, RGBHEX(_c), 20, 30, false, K_NO_WAIT);

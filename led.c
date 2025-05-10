@@ -23,6 +23,7 @@ LOG_MODULE_REGISTER(app_led, CONFIG_APP_LED_LOG_LEVEL);
 #if IS_ENABLED(CONFIG_LED_STRIP)
 static void leds_strip_update(app_led_data_t *leds)
 {
+	// TODO leds->offset with strip - maybe need to override strip->update_rgb
 	if (k_mutex_lock(&leds->mutex, K_FOREVER) == 0) {
 		if (led_strip_update_rgb(leds->app_led, leds->pixels, leds->hw_num_leds) != 0) {
 			LOG_ERR("Couldn't update strip");
