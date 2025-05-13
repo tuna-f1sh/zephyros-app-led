@@ -1,0 +1,73 @@
+#include <zephyr/dt-bindings/led/led.h>
+
+/ {
+	leds: leds {
+		compatible = "gpio-leds";
+		red_led: led_1 {
+			gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;
+			label = "Red LED";
+		};
+		green_led: led_0 {
+			gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;
+			label = "User LD3";
+		};
+		blue_led: led_2 {
+			gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
+			label = "Blue LED";
+		};
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+
+		red_pwm_led: led_pwm_0 {
+			pwms = <&pwm2 4 PWM_HZ(200) PWM_POLARITY_INVERTED>;
+			label = "Red PWM LED";
+		};
+
+		green_pwm_led: led_pwm_1 {
+			pwms = <&pwm2 1 PWM_HZ(200) PWM_POLARITY_INVERTED>;
+			label = "Green PWM LED";
+		};
+
+		blue_pwm_led: led_pwm_2 {
+			pwms = <&pwm2 2 PWM_HZ(200) PWM_POLARITY_INVERTED>;
+			label = "Blue PWM LED";
+		};
+	};
+
+	aliases {
+		led-strip = &led_strip;
+	};
+};
+
+&timers2 {
+	status = "okay";
+
+	pwm2: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch1_pa0 &tim2_ch2_pa1 &tim2_ch4_pa3>;
+		pinctrl-names = "default";
+	};
+};
+
+&spi1 {
+	status = "okay";
+	pinctrl-0 = <&spi1_nss_pa15 &spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>;
+
+	led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+
+		/* SPI */
+		reg = <0>; /* ignored, but necessary for SPI bindings */
+		spi-max-frequency = <4000000>;
+		frame-format = <32768>; /* SPI_FRAME_FORMAT_TI */
+
+		/* WS2812 */
+		chain-length = <6>; /* arbitrary; change at will */
+		reset-delay = <50>; /* default 8 us but 50 us in datasheet and helps prevent flicker */
+		spi-one-frame = <0x70>;
+		spi-zero-frame = <0x40>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+	};
+};

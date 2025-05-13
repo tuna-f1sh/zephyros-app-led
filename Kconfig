@@ -1,12 +1,58 @@
-config APP_LED
-	bool "Enable LED application"
+menuconfig APP_LED
+	bool "Enable App LED module"
 	default n
-	help
-	  Enable LED application.
 
-config APP_LED_SUSPEND_TASK_MANUAL
-	bool "Suspend LED task on manual mode"
-	default y
-	help
-	  If enabled, the LED task is suspended when the node is in manual mode.
-	  If disabled, the LED task is running in manual mode. If strip is unreliable, may help as will be updated at 100 Hz even if no change in state.
+if APP_LED
+
+	config APP_LED_LOG_LEVEL
+		int "Log level for App LED module"
+		default 3
+		help
+		0: No logs
+		1: Error logs only
+		2: Warning logs
+		3: Info logs
+		4: Debug logs
+
+	choice
+		prompt "Grayscale mode"
+		default APP_LED_GRAYSCALE_WEIGHTED
+		help
+		Set the grayscale mode for non-RGB LEDs.
+
+	config APP_LED_GRAYSCALE_WEIGHTED
+		bool "Weighted grayscale"
+
+	config APP_LED_GRAYSCALE_RGB_SUM
+		bool "RGB sum grayscale"
+
+	config APP_LED_GRAYSCALE_ONOFF
+		bool "On/Off grayscale"
+
+	endchoice
+
+	config APP_LED_UPDATE_PERIOD
+		int "LED update period (ms)"
+		default 10
+		help
+		Set the update period for the LED thread.
+
+	menuconfig APP_LED_USE_WORKQUEUE
+		bool "Use workqueue for LED updates"
+		default y
+		help
+		Use a workqueue for LED updates. If not selected, the user App must call app_led_update() at CONFIG_APP_LED_UPDATE_PERIOD intervals for each App LED instance.
+
+	if APP_LED_USE_WORKQUEUE
+
+		config APP_LED_SUSPEND_TASK_MANUAL
+			bool "Suspend LED task on manual mode"
+			default y
+			help
+			If enabled, the LED task is suspended when the node is in manual mode since there is no need to update the LED state in the background.
+			If using LED_STRIP, if might be preferable to disable this so that the strip is continually refreshed.
+
+
+	endif
+
+endif

@@ -1,0 +1,30 @@
+/ {
+	pwmleds {
+		compatible = "pwm-leds";
+
+		red_pwm_led: led_pwm_0 {
+			pwms = <&pwm2 4 PWM_HZ(200) PWM_POLARITY_INVERTED>;
+			label = "Red PWM LED";
+		};
+
+		green_pwm_led: led_pwm_1 {
+			pwms = <&pwm2 1 PWM_HZ(200) PWM_POLARITY_INVERTED>;
+			label = "Green PWM LED";
+		};
+
+		blue_pwm_led: led_pwm_2 {
+			pwms = <&pwm2 2 PWM_HZ(200) PWM_POLARITY_INVERTED>;
+			label = "Blue PWM LED";
+		};
+	};
+};
+
+&timers2 {
+	status = "okay";
+
+	pwm2: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch1_pa0 &tim2_ch2_pa1 &tim2_ch4_pa3>;
+		pinctrl-names = "default";
+	};
+};

@@ -1,0 +1,25 @@
+sample:
+  name: demo_led
+common:
+  tags: LED
+  build_only: true
+  integration_platforms:
+    - nucleo_l432kc
+tests:
+  demo_led.gpio:
+    filter: dt_compat_enabled("gpio-leds")
+
+  demo_led.no_workqueue:
+    filter: dt_compat_enabled("gpio-leds")
+    extra_args:
+      - CONFIG_APP_LED_USE_WORKQUEUE=n
+
+  demo_led.pwm:
+    filter: dt_compat_enabled("pwm-leds")
+    extra_overlay_confs:
+      - prj_pwm.conf
+
+  demo_led.ws2812:
+    filter: dt_alias_exists("led-strip")
+    extra_overlay_confs:
+      - prj_ws2812.conf
