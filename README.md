@@ -71,6 +71,4 @@ I have ported this from projects into a module in an attempt to make it more gen
 - [x] Samples.
 - [ ] Tidy internal LED HW abstraction. Perhaps HW update callback in `app_led_data_t`?
 - [ ] Test suite with ztest using native_sim or qemu.
-- [ ] Support non-RGB strip LEDs such as RGBW or W. Probably add `cell_size` to `app_led_data_t` and
-  use that to calculate the number of cells in the strip and use `update_channels`. `cell_size`
-could replace pin based RGB /3 too.
+- [ ] Support non-RGB strip LEDs such as RGBW or W. Probably add `cell_size` to `app_led_data_t` and use that to calculate the number of cells in the strip and use `update_channels`. `cell_size` could replace pin based RGB const /3 too.

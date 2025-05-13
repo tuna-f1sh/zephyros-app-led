@@ -234,16 +234,22 @@ typedef struct {
 	uint8_t decay_rate;	     // rate to decay brightness 0xFF for no decay
 } app_led_sequence_step_t;
 
+typedef int (*app_led_update_hw_func_t)(void *leds);
 typedef int (*app_led_set_pixels_func_t)(void *leds, uint16_t start, uint16_t end, rgb_color_t c,
 					 uint8_t brightness, k_timeout_t block);
+struct app_led_funcs {
+	app_led_update_hw_func_t update_hw;   // function to update hardware
+	app_led_set_pixels_func_t set_pixels; // function to set pixels
+};
 
 /* Main struct for controllable app_led device */
 typedef struct {
 	LedMode mode;			    // current display mode
 	LedMode last_mode;		    // last mode before current to return
-	LedType hw_type;		    // tagged hardware type for any runtime checks
-	bool is_rgb;			    // true if RGB LED strip
+	const LedType hw_type;		    // tagged hardware type for any runtime checks
+	const bool is_rgb;		    // true if RGB LED strip
 	const uint8_t offset;		    // start offset to apply to device tree node phandle
+	const uint8_t cell_size;            // number of LEDs in an addressable index
 	struct k_mutex mutex;		    // mutex for mutli-thread access
 	const struct device *const app_led; // pointer to device tree node
 	uint8_t global_brightness;	    // current brightness
@@ -253,6 +259,7 @@ typedef struct {
 	const uint8_t num_leds;		    // number of LEDs in sequence
 	rgb_color_t global_color;	    // user colour for manual mode, will revert to this
 	rgb_color_t _color;		    // current global color
+        bool _toggle;		            // toggle state for blink
 	struct app_led_state *const state;  // state of each led
 	uint8_t sequence_step;		    // sequence step index
 	const app_led_sequence_step_t *sequence; // current sequence frame
@@ -303,11 +310,13 @@ typedef struct {
 		.hw_type = (_name##_auto_hw_type),                                                 \
 		.is_rgb = (bool)(_is_rgb),                                                         \
 		.offset = 0,                                                                       \
+		.cell_size = 1,                                                                    \
 		.hw_num_leds = (_num_hw_leds),                                                     \
 		.num_leds = APP_LED_CALC_NUM_LOGICAL_LEDS(_node_id, _num_hw_leds, _is_rgb),        \
 		.global_brightness = 0xFF,                                                         \
 		.global_color = {.r = 0, .g = 0, .b = 0},                                          \
 		._color = {.r = 0, .g = 0, .b = 0},                                                \
+		._toggle = false,                                                                  \
 		.hue = 0,                                                                          \
 		.rainbow = false,                                                                  \
 		.state = _name##_state_array,                                                      \
@@ -381,7 +390,8 @@ int app_led_blink_sync(app_led_data_t *leds, rgb_color_t c, k_timeout_t block);
 
 /* @breif Fade to a color over a period of time
  *
- * Maniplates app_led_fade_sequence to set the color and brightness
+ * Maniplates app_led_fade_sequence to set the color and brightness so will not work with multiple
+ * App LEDs fading at once
  *
  * @param leds Pointer to the app_led_data_t structure
  * @param c Color to fade to
@@ -471,7 +481,7 @@ int app_led_set_global_brightness(app_led_data_t *leds, uint8_t brightness, k_ti
  * @param leds Pointer to the app_led_data_t structure
  * @return 0 on success, negative error code on failure
  */
-int app_led_init(app_led_data_t *const leds);
+int app_led_init(app_led_data_t *leds);
 /* @brief Update state of the LEDs
  *
  * This function is called from the workqueue to update the state of the LEDs
