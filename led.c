@@ -156,15 +156,18 @@ static int leds_set_pin_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c, u
 			      k_timeout_t block)
 {
 	int err;
+	/* TODO use cell_size from app_led_data_t but not properly defined yet */
+	// uint8_t cell_size = leds->cell_size;
+	uint8_t cell_size = leds->is_rgb ? 3 : 1;
 
-	if ((i * leds->cell_size + leds->cell_size) > leds->num_leds) {
+	if ((i * cell_size + cell_size) > leds->hw_num_leds) {
 		LOG_ERR("LED index out of range");
 		return -EINVAL;
 	}
 
 	if (leds->is_rgb) {
-		for (int j = 0; j < leds->cell_size; j++) {
-			err = leds_set_brightness(leds, i * leds->cell_size + j, c.bytes[j % 3], block);
+		for (int j = 0; j < cell_size; j++) {
+			err = leds_set_brightness(leds, i * cell_size + j, c.bytes[j % 3], block);
 			if (err != 0) {
 				return err;
 			}
@@ -178,8 +181,8 @@ static int leds_set_pin_pixel(app_led_data_t *leds, uint16_t i, rgb_color_t c, u
 #else
 		uint8_t grayscale_brightness = c.hex > 0 ? 255 : 0;
 #endif
-		for (int j = 0; j < leds->cell_size; j++) {
-			err = leds_set_brightness(leds, i * leds->cell_size + j, grayscale_brightness, block);
+		for (int j = 0; j < cell_size; j++) {
+			err = leds_set_brightness(leds, i * cell_size + j, grayscale_brightness, block);
 			if (err != 0) {
 				return err;
 			}

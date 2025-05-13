@@ -234,13 +234,14 @@ typedef struct {
 	uint8_t decay_rate;	     // rate to decay brightness 0xFF for no decay
 } app_led_sequence_step_t;
 
-typedef int (*app_led_update_hw_func_t)(void *leds);
-typedef int (*app_led_set_pixels_func_t)(void *leds, uint16_t start, uint16_t end, rgb_color_t c,
-					 uint8_t brightness, k_timeout_t block);
-struct app_led_funcs {
-	app_led_update_hw_func_t update_hw;   // function to update hardware
-	app_led_set_pixels_func_t set_pixels; // function to set pixels
-};
+// TODO not used yet but might make different hardwares easier to support
+// typedef int (*app_led_update_hw_func_t)(void *leds);
+// typedef int (*app_led_set_pixels_func_t)(void *leds, uint16_t start, uint16_t end, rgb_color_t c,
+// 					 uint8_t brightness, k_timeout_t block);
+// struct app_led_funcs {
+// 	app_led_update_hw_func_t update_hw;   // function to update hardware
+// 	app_led_set_pixels_func_t set_pixels; // function to set pixels
+// };
 
 /* Main struct for controllable app_led device */
 typedef struct {
@@ -266,7 +267,6 @@ typedef struct {
 	uint32_t time_sequence_next;		 // tick to next
 	int8_t sequence_repeat_count;		 // -1 to repeat forever
 	app_led_sequence_data_t sequence_data;	 // data for sequence being run
-	app_led_set_pixels_func_t set_pixels;	 // function to set pixels
 	void *const pixels;			 // pixel buffer for RGB LED strip, NULL if not used
 #if IS_ENABLED(CONFIG_APP_LED_USE_WORKQUEUE)
 	struct k_work_delayable dwork; // delayed work for state machine update
@@ -310,6 +310,7 @@ typedef struct {
 		.hw_type = (_name##_auto_hw_type),                                                 \
 		.is_rgb = (bool)(_is_rgb),                                                         \
 		.offset = 0,                                                                       \
+		/* TODO */                                                                         \
 		.cell_size = 1,                                                                    \
 		.hw_num_leds = (_num_hw_leds),                                                     \
 		.num_leds = APP_LED_CALC_NUM_LOGICAL_LEDS(_node_id, _num_hw_leds, _is_rgb),        \
